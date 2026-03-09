@@ -37,7 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_filter_rules_active
 
 CREATE TABLE IF NOT EXISTS access_logs (
     id          BIGSERIAL    PRIMARY KEY,
-    host        TEXT         NOT NULL,
+    client_ip   TEXT         NOT NULL,
     url         TEXT         NOT NULL,
     method      TEXT         NOT NULL DEFAULT 'CONNECT',
     blocked     BOOLEAN      NOT NULL,

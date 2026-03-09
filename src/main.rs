@@ -173,7 +173,7 @@ impl AppState {
     /// Enregistre un accès en base de façon asynchrone (fire-and-forget).
     pub fn log_access_background(
         &self,
-        host:       String,
+        client_ip:  String,
         url:        String,
         method:     String,
         blocked:    bool,
@@ -183,11 +183,11 @@ impl AppState {
         tokio::spawn(async move {
             let result = sqlx::query(
                 r#"
-                INSERT INTO access_logs (host, url, method, blocked, user_agent, accessed_at)
+                INSERT INTO access_logs (client_ip, url, method, blocked, user_agent, accessed_at)
                 VALUES ($1, $2, $3, $4, $5, NOW())
                 "#,
             )
-            .bind(&host)
+            .bind(&client_ip)
             .bind(&url)
             .bind(&method)
             .bind(blocked)
@@ -223,37 +223,31 @@ impl HttpHandler for ProxyHandler {
     /// Appelé avant chaque requête sortante.
     async fn handle_request(
         &mut self,
-        _ctx: &HttpContext,
+        ctx: &HttpContext,
         req: Request<Body>,
     ) -> RequestOrResponse {
         let method     = req.method().to_string();
         let uri        = req.uri().to_string();
-        let host       = req.uri().host().unwrap_or("unknown").to_owned();
+        let client_ip  = ctx.client_addr.ip().to_string();
         let user_agent = req
             .headers()
             .get(header::USER_AGENT)
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned);
 
-        // ── 1. Interface d'administration Grand-Duc ───────────────────────
-        if host == ADMIN_HOST {
-            info!("ADMIN    [{method}] {uri}");
-            return RequestOrResponse::Response(serve_asset(req.uri().path()));
-        }
-
-        // ── 2. Filtrage ───────────────────────────────────────────────────
+        // ── Filtrage ───────────────────────────────────────────────────
         if self.state.is_blocked(&uri).await {
             warn!("BLOQUÉ   [{method}] {uri}");
             self.state.log_access_background(
-                host, uri.clone(), method, true, user_agent,
+                client_ip.clone(), uri.clone(), method, true, user_agent,
             );
             return RequestOrResponse::Response(build_blocked_response(&uri));
         }
 
-        // ── 3. Trafic autorisé ────────────────────────────────────────────
+        // ── Trafic autorisé ────────────────────────────────────────────
         info!("AUTORISÉ [{method}] {uri}");
         self.state.log_access_background(
-            host, uri, method, false, user_agent,
+            client_ip, uri, method, false, user_agent,
         );
         RequestOrResponse::Request(req)
     }
@@ -294,12 +288,6 @@ fn serve_asset(path: &str) -> Response<Body> {
 
     let file_path = {
         let requested = Path::new(&base_dir).join(&clean);
-        // ← DEBUG
-        warn!("serve_asset | path={:?}  | cwd={:?} | base={} | clean={} | full={:?} | exists={}",
-            path, std::env::current_dir().unwrap_or_default(),
-            base_dir.display().to_string(), clean, requested, requested.is_file()
-        );
-
         if requested.is_file() {
             Some(requested)
         } else if !is_asset {
