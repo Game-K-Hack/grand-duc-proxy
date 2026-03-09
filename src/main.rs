@@ -17,7 +17,7 @@
 //! Interface d'administration :
 //!   Configurer le proxy navigateur sur 127.0.0.1:8080, puis visiter http://grand-duc.proxy/
 
-use std::net::SocketAddr;
+use std::{net::SocketAddr, path::PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use std::path::Path;
@@ -29,7 +29,6 @@ use hudsucker::{
     hyper::{header, Body, Request, Response, StatusCode},
     HttpContext, HttpHandler, ProxyBuilder, RequestOrResponse,
 };
-use include_dir::{include_dir, Dir};
 use mime_guess::from_path;
 use rcgen::{BasicConstraints, CertificateParams, IsCa, KeyPair};
 use regex::Regex;
@@ -38,13 +37,6 @@ use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
 // ── Assets statiques ─────────────────────────────────────────────────────────
-
-/// Build frontend Vue/React de l'interface d'administration
-static DIST: Dir = include_dir!("$CARGO_MANIFEST_DIR/templates/blocked");
-
-/// Build frontend Vue/React de la page de blocage
-static BLOCKED_DIST: Dir = include_dir!("$CARGO_MANIFEST_DIR/templates/blocked");
-
 
 /// Hôte virtuel exposant l'interface d'administration.
 /// Configurer le proxy sur 127.0.0.1:8080, puis ouvrir http://grand-duc.proxy/
@@ -279,62 +271,100 @@ impl HttpHandler for ProxyHandler {
 // Fonctions utilitaires — Réponses HTTP
 // ─────────────────────────────────────────────────────────────────────────────
 
+fn resolve_path(relative: &str) -> PathBuf {
+    // GRAND_DUC_ROOT permet de pointer vers le projet en dev ou en prod
+    std::env::var("GRAND_DUC_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::env::current_exe()
+                .unwrap()
+                .parent().unwrap()
+                .to_path_buf()
+        })
+        .join(relative)
+}
+
 /// Sert un fichier depuis les builds frontend embarqués.
 /// - /blocked/...  → BLOCKED_DIST
 /// - /*            → DIST  (interface admin)
 fn serve_asset(path: &str) -> Response<Body> {
-    let (dist, clean) = if let Some(rest) = path.strip_prefix("/blocked/") {
-        (&BLOCKED_DIST, rest)
-    } else {
-        (&DIST, path.trim_start_matches('/'))
+    let (base_dir, clean) = (resolve_path("templates/blocked"), path.trim_start_matches('/').to_string());
+
+    let is_asset = Path::new(&clean).extension().is_some();
+
+    let file_path = {
+        let requested = Path::new(&base_dir).join(&clean);
+        // ← DEBUG
+        warn!("serve_asset | path={:?}  | cwd={:?} | base={} | clean={} | full={:?} | exists={}",
+            path, std::env::current_dir().unwrap_or_default(),
+            base_dir.display().to_string(), clean, requested, requested.is_file()
+        );
+
+        if requested.is_file() {
+            Some(requested)
+        } else if !is_asset {
+            let index = Path::new(&base_dir).join("index.html");
+            if index.is_file() { Some(index) } else { None }
+        } else {
+            None
+        }
     };
 
-    // Fallback index.html uniquement pour les routes SPA (pas d'extension)
-    // Les assets (.js, .css, .webp…) retournent 404 s'ils sont absents
-    let is_asset = Path::new(clean).extension().is_some();
-    let file = dist.get_file(clean)
-                   .or_else(|| if !is_asset { dist.get_file("index.html") } else { None });
-
-    match file {
-        Some(f) => {
-            let mime  = from_path(f.path()).first_or_octet_stream();
-            let cache = if clean.is_empty() || clean == "index.html" {
-                "no-cache"
-            } else {
-                "public, max-age=31536000, immutable"
-            };
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, mime.as_ref())
-                .header(header::CACHE_CONTROL, cache)
-                .body(Body::from(f.contents()))
-                .expect("Construction de la réponse asset impossible")
+    match file_path {
+        Some(path) => {
+            match std::fs::read(&path) {
+                Ok(bytes) => {
+                    let mime  = from_path(&path).first_or_octet_stream();
+                    let cache = if clean.is_empty() || clean == "index.html" {
+                        "no-cache"
+                    } else {
+                        "public, max-age=31536000, immutable"
+                    };
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, mime.as_ref())
+                        .header(header::CACHE_CONTROL, cache)
+                        .body(Body::from(bytes))
+                        .expect("Construction de la réponse asset impossible")
+                }
+                Err(e) => {
+                    error!("Lecture fichier échouée {:?}: {}", path, e);
+                    Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Body::from("Erreur lecture fichier"))
+                        .unwrap()
+                }
+            }
         }
         None => Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
             .body(Body::from("404 — Ressource introuvable"))
-            .expect("Construction de la réponse 404 impossible"),
+            .unwrap(),
     }
 }
 
 /// Retourne l'index.html du build "blocked" en y injectant l'URL bloquée.
 /// Le frontend la récupère via window.__BLOCKED_URL__
 fn build_blocked_response(url: &str) -> Response<Body> {
-    let index = BLOCKED_DIST
-        .get_file("index.html")
-        .and_then(|f| std::str::from_utf8(f.contents()).ok())
-        .unwrap_or("<html><body>Accès bloqué</body></html>");
+    let index_path = resolve_path("templates/blocked/index.html");
+    let index = std::fs::read_to_string(&index_path)
+        .unwrap_or_else(|e| {
+            error!("Impossible de lire {:?}: {}", index_path, e);
+            "<html><body>Accès bloqué</body></html>".to_owned()
+        });
 
     let injection = format!(
-        r#"<base href="http://grand-duc.proxy/blocked/">
-<script>window.__BLOCKED_URL__ = "{}";</script>"#,
+        r#"<base href="https://grand-duc.proxy/blocked/"><script>window.__BLOCKED_URL__ = "{}";</script>"#,
         html_escape(url)
     );
 
-    // Injecte avant </head>, ou en tête de document si absent
-    let html = if let Some(pos) = index.find("</head>") {
-        format!("{}{}{}", &index[..pos], injection, &index[pos..])
+    let html = if let Some(pos) = index.find("<head>") {
+        let insert_at = pos + "<head>".len();
+        format!("{}{}{}", &index[..insert_at], injection, &index[insert_at..])
+    } else if let Some(pos) = index.find("<head ") {
+        let insert_at = index[pos..].find('>').map(|i| pos + i + 1).unwrap_or(pos);
+        format!("{}{}{}", &index[..insert_at], injection, &index[insert_at..])
     } else {
         format!("{}{}", injection, index)
     };
