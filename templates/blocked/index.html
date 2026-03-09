@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+    <title>Page restreinte | Grand Duc Proxy</title>
+    <style>
+        :root {
+            --owl-orange: #FF8C00;
+            --owl-brown: #8B5A2B;
+            --owl-dark: #4B3621;
+            --bg-light: #f9fbf9;
+            --text-color: #2F2F2F;
+        }
+
+        @font-face {
+            font-family: 'grandducfont';
+            font-style: normal;
+            font-weight: 400;
+            src: url("assets/grand-duc-font.woff2") format('woff2');
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'grandducfont', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-light);
+            background-image: radial-gradient(#d1dbd1 0.8px, transparent 0.8px);
+            background-size: 24px 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: var(--text-color);
+        }
+
+        .card {
+            z-index: 3;
+            padding: 40px;
+            text-align: center;
+            width: 100%;
+            margin-right: 50vw;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .card-description {
+            width: max-content;
+            display: flex;
+            flex-direction: column;
+            align-items: end;
+        }
+
+        .header-icons {
+            position: relative;
+            margin-bottom: 25px;
+        }
+
+        .owl-logo {
+            width: 100px;
+            height: auto;
+        }
+
+        .warning-icon {
+            width: 40px;
+            position: absolute;
+            bottom: -5px;
+            right: 35%;
+        }
+
+        h1 {
+            color: var(--owl-dark);
+            margin: 10px 0;
+            font-size: 5rem;
+            letter-spacing: -0.5px;
+            text-transform: uppercase;
+        }
+
+        p {
+            font-size: 1.5rem;
+            line-height: 1.6;
+            color: #666;
+            margin: 0;
+            width: max-content;
+        }
+
+        .footer {
+            z-index: 3;
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            font-size: 0.8rem;
+            color: #999;
+        }
+
+        .owl {
+            z-index: 1;
+            position: absolute;
+            height: 100%;
+            width: auto;
+            right: 0;
+            pointer-events: none;
+        }
+
+        .unselect-image {
+            position: absolute;
+            z-index: 2;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .noselect { 
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        } 
+    </style>
+</head>
+<body>
+
+    <img src="./assets/owl.webp" class="owl noselect">
+
+    <div class="unselect-image noselect"></div>
+
+    <div class="card">
+        <h1>Grand Duc Proxy</h1>
+        <div class="card-description">
+            <p>La page à laquelle vous essayez d'accéder est <strong style="color: #df5050;">bloquée</strong> par le proxy.</p>
+            <p style="font-size: 0.8rem;">Si vous pensez que c'est une erreur, signalez-le à votre administrateur.</p>
+        </div>
+    </div>
+
+    <div class="footer">
+        Sécurité Réseau &bull; Surveillance Grand Duc
+    </div>
+
+</body>
+</html>

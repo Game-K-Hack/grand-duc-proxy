@@ -1,0 +1,60 @@
+[package]
+name        = "grand-duc-proxy"
+version     = "0.1.0"
+edition     = "2021"
+description = "Proxy HTTP/HTTPS d'entreprise avec filtrage dynamique par règles Regex"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NOTE sur la compatibilité Windows / Linux
+# ─────────────────────────────────────────────────────────────────────────────
+# Toutes les dépendances TLS utilisent `rustls` (pure Rust).
+# Aucun OpenSSL, pas de Perl requis à la compilation.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[dependencies]
+
+# ── Proxy framework ───────────────────────────────────────────────────────────
+# default-features = false : désactive le backend OpenSSL par défaut sur Linux
+# rcgen-ca       : CA via rcgen (pure Rust), pas d'openssl-ca
+# rustls-client  : connexions sortantes via rustls, pas de native-tls / openssl
+hudsucker = { version = "0.21", default-features = false, features = ["rcgen-ca", "rustls-client"] }
+
+# ── Runtime asynchrone ────────────────────────────────────────────────────────
+tokio = { version = "1", features = ["full"] }
+
+# ── Base de données PostgreSQL ────────────────────────────────────────────────
+# runtime-tokio-rustls : driver async avec rustls (pas d'OpenSSL)
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres"] }
+
+# ── Génération de certificats (pure Rust) ─────────────────────────────────────
+# IMPORTANT : la version doit correspondre à celle embarquée par hudsucker 0.21.
+# Si une erreur de type apparaît, vérifiez `cargo tree -i rcgen` et alignez.
+rcgen = "0.13"
+
+# ── Filtrage par expressions régulières ──────────────────────────────────────
+regex = "1"
+
+# ── Logging structuré ─────────────────────────────────────────────────────────
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ── Gestion d'erreurs ─────────────────────────────────────────────────────────
+anyhow = "1"
+
+base64 = "0.22"
+
+include_dir  = "0.7"
+mime_guess   = "2"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Profils de compilation
+# ─────────────────────────────────────────────────────────────────────────────
+
+[profile.release]
+opt-level      = 3
+lto            = true   # Link-Time Optimization
+codegen-units  = 1      # Un seul CGU pour maximiser les optimisations
+strip          = true   # Retire les symboles de debug du binaire final
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_System_Console", "Win32_Foundation"] }
