@@ -218,6 +218,21 @@ impl ProxyHandler {
     }
 }
 
+// Liste des hôtes à ne pas intercepter (certificate pinning connu)
+const TLS_BYPASS: &[&str] = &[
+    "mobile.events.data.microsoft.com",
+    "events.data.microsoft.com",
+    "settings-win.data.microsoft.com",
+    "watson.telemetry.microsoft.com",
+    "ocsp.digicert.com",
+    "ocsp.pki.goog",
+    "ocsp2.globalsign.com",
+];
+
+fn is_pinned_host(host: &str) -> bool {
+    TLS_BYPASS.iter().any(|&h| host == h || host.ends_with(&format!(".{}", h)))
+}
+
 #[async_trait]
 impl HttpHandler for ProxyHandler {
     /// Appelé avant chaque requête sortante.
@@ -226,25 +241,38 @@ impl HttpHandler for ProxyHandler {
         ctx: &HttpContext,
         req: Request<Body>,
     ) -> RequestOrResponse {
-        let method     = req.method().to_string();
-        let uri        = req.uri().to_string();
-        let client_ip  = ctx.client_addr.ip().to_string();
+        let method    = req.method().to_string();
+        let uri       = req.uri().to_string();
+        let host      = req.uri().host().unwrap_or("unknown").to_owned();
+        let client_ip = ctx.client_addr.ip().to_string();
         let user_agent = req
             .headers()
             .get(header::USER_AGENT)
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned);
 
-        // ── Filtrage ───────────────────────────────────────────────────
+        // ── 1. Interface d'administration Grand-Duc ───────────────────────
+        if host == ADMIN_HOST {
+            info!("ADMIN    [{method}] {uri}");
+            return RequestOrResponse::Response(serve_asset(req.uri().path()));
+        }
+
+        // ── 2. Certificate pinning — tunnel direct sans interception TLS ──
+        if method == "CONNECT" && is_pinned_host(&host) {
+            info!("BYPASS   [{method}] {uri}  (certificate pinning)");
+            return RequestOrResponse::Request(req);
+        }
+
+        // ── 3. Filtrage ───────────────────────────────────────────────────
         if self.state.is_blocked(&uri).await {
             warn!("BLOQUÉ   [{method}] {uri}");
             self.state.log_access_background(
-                client_ip.clone(), uri.clone(), method, true, user_agent,
+                client_ip, uri.clone(), method, true, user_agent,
             );
             return RequestOrResponse::Response(build_blocked_response(&uri));
         }
 
-        // ── Trafic autorisé ────────────────────────────────────────────
+        // ── 4. Trafic autorisé ────────────────────────────────────────────
         info!("AUTORISÉ [{method}] {uri}");
         self.state.log_access_background(
             client_ip, uri, method, false, user_agent,
