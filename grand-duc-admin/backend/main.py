@@ -38,3 +38,5 @@ app.include_router(rules.router, prefix="/api/rules", tags=["Règles"])
 app.include_router(logs.router,  prefix="/api/logs",  tags=["Logs"])
 app.include_router(stats.router, prefix="/api/stats", tags=["Statistiques"])
 app.include_router(users.router, prefix="/api/users", tags=["Utilisateurs"])
+
+# uvicorn main:app --reload --port 8000

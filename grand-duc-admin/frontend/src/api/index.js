@@ -45,6 +45,7 @@ export const logsApi = {
 
 export const statsApi = {
   get:     ()       => api.get('/stats'),
+  traffic: (mode)   => api.get('/stats/traffic', { params: { mode } }),
 }
 
 export const usersApi = {

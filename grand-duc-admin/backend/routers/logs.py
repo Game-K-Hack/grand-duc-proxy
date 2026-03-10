@@ -15,7 +15,7 @@ router = APIRouter()
 class LogOut(BaseModel):
     id:          int
     client_ip:   Optional[str]
-    host:        str
+    host:        Optional[str]
     url:         str
     method:      str
     blocked:     bool

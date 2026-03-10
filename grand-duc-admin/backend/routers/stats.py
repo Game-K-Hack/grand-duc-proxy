@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
+from typing import Literal
 
 from database import get_db
 from models   import AccessLog, FilterRule
@@ -12,9 +13,89 @@ router = APIRouter()
 
 
 class TopDomain(BaseModel):
-    host:    str
+    host:    str | None
     count:   int
     blocked: int
+
+
+# ── Trafic réseau ─────────────────────────────────────────────────────────────
+
+class TrafficPoint(BaseModel):
+    label:   str   # heure ou minute selon le mode
+    total:   int
+    blocked: int
+    allowed: int
+
+
+class TrafficResponse(BaseModel):
+    points: list[TrafficPoint]
+    mode:   str   # "24h" | "1h"
+
+
+@router.get("/traffic", response_model=TrafficResponse)
+async def get_traffic(
+    mode:  Literal["24h", "1h"] = Query("24h"),
+    db:    AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """
+    Retourne les données de trafic agrégées :
+    - mode=24h : 24 points, un par heure sur les dernières 24h
+    - mode=1h  : 60 points, un par minute sur la dernière heure
+    """
+    if mode == "24h":
+        # Agrégation par heure — génère une série complète même si certaines
+        # heures ont 0 requêtes (via generate_series)
+        sql = text("""
+            WITH hours AS (
+                SELECT generate_series(
+                    date_trunc('hour', NOW()) - INTERVAL '23 hours',
+                    date_trunc('hour', NOW()),
+                    INTERVAL '1 hour'
+                ) AS slot
+            )
+            SELECT
+                TO_CHAR(h.slot, 'HH24:MI') AS label,
+                COALESCE(COUNT(l.id), 0)                              AS total,
+                COALESCE(SUM(CASE WHEN l.blocked THEN 1 ELSE 0 END), 0) AS blocked
+            FROM hours h
+            LEFT JOIN access_logs l
+                ON date_trunc('hour', l.accessed_at) = h.slot
+            GROUP BY h.slot
+            ORDER BY h.slot ASC
+        """)
+    else:
+        # Agrégation par minute sur la dernière heure
+        sql = text("""
+            WITH minutes AS (
+                SELECT generate_series(
+                    date_trunc('minute', NOW()) - INTERVAL '59 minutes',
+                    date_trunc('minute', NOW()),
+                    INTERVAL '1 minute'
+                ) AS slot
+            )
+            SELECT
+                TO_CHAR(m.slot, 'HH24:MI') AS label,
+                COALESCE(COUNT(l.id), 0)                              AS total,
+                COALESCE(SUM(CASE WHEN l.blocked THEN 1 ELSE 0 END), 0) AS blocked
+            FROM minutes m
+            LEFT JOIN access_logs l
+                ON date_trunc('minute', l.accessed_at) = m.slot
+            GROUP BY m.slot
+            ORDER BY m.slot ASC
+        """)
+
+    rows = (await db.execute(sql)).all()
+    points = [
+        TrafficPoint(
+            label=r.label,
+            total=int(r.total),
+            blocked=int(r.blocked),
+            allowed=int(r.total) - int(r.blocked),
+        )
+        for r in rows
+    ]
+    return TrafficResponse(points=points, mode=mode)
 
 
 class StatsResponse(BaseModel):
