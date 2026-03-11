@@ -65,8 +65,10 @@ export const groupsApi = {
 
 // ── Killswitch ────────────────────────────────────────────────────────────────
 export const killswitchApi = {
-  get: ()       => api.get('/killswitch'),
-  set: (active) => api.post('/killswitch', { active }),
+  get:            ()         => api.get('/killswitch'),
+  set:            (active)   => api.post('/killswitch', { active }),
+  history:        ()         => api.get('/killswitch/history'),
+  verifyPassword: (password) => api.post('/killswitch/verify-password', { password }),
 }
 
 // ── TLS Bypass ────────────────────────────────────────────────────────────────

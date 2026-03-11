@@ -90,3 +90,12 @@ class AppSetting(Base):
     __tablename__ = "app_settings"
     key:   Mapped[str] = mapped_column(Text, primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class KillswitchHistory(Base):
+    """Historique des activations/désactivations du killswitch."""
+    __tablename__ = "killswitch_history"
+    id:         Mapped[int]      = mapped_column(BigInteger, primary_key=True)
+    action:     Mapped[str]      = mapped_column(Text, nullable=False)   # 'activated' | 'deactivated'
+    username:   Mapped[str]      = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
