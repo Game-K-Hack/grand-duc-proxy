@@ -4,7 +4,7 @@
       <h1 class="page-title">Test d'accès</h1>
     </div>
 
-    <div style="max-width:760px">
+    <div style="max-width:800px;margin:auto;">
 
       <!-- ── Formulaire de test ──────────────────────────────────────── -->
       <div class="card" style="margin-bottom:20px">
@@ -146,11 +146,11 @@
         </div>
 
         <!-- Historique des tests -->
-        <div v-if="history.length > 1" style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px">
+        <div v-if="history.length > 0" style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px">
           <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;font-weight:600">Historique</div>
           <div style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto">
             <div
-              v-for="(h, i) in history.slice(1)" :key="i"
+              v-for="(h, i) in history" :key="i"
               style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:4px;background:var(--surface2);font-size:12px;cursor:pointer"
               @click="result = h"
             >
@@ -210,7 +210,6 @@ async function runTest() {
     })
     result.value = data
     history.value.unshift(data)
-    if (history.value.length > 20) history.value.pop()
   } finally {
     testing.value = false
   }
