@@ -86,37 +86,62 @@
 
         <!-- Gestion des groupes -->
         <div class="card" style="padding:0;overflow:hidden">
-          <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
-            <div style="font-weight:600;font-size:13px;margin-bottom:2px">Groupes assignés</div>
-            <div style="font-size:12px;color:var(--text-muted)">
-              Les règles de tous les groupes s'appliquent cumulativement, dans l'ordre de priorité des règles.
+          <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div>
+              <div style="font-weight:600;font-size:13px;margin-bottom:2px">Groupes assignés</div>
+              <div style="font-size:12px;color:var(--text-muted)">Les règles s'appliquent cumulativement dans l'ordre de priorité.</div>
+            </div>
+            <div v-if="auth.isAdmin" style="flex-shrink:0">
+              <button ref="addBtnRef" class="btn btn-primary btn-sm" @click="toggleDropdown" :disabled="savingGroups">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Ajouter
+              </button>
+              <Teleport to="body">
+                <template v-if="showAddDropdown">
+                  <div style="position:fixed;inset:0;z-index:999" @click="closeDropdown" />
+                  <div :style="`position:fixed;top:${ddPos.top}px;right:${ddPos.right}px;z-index:1000;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.3);width:260px`">
+                    <div style="padding:8px;border-bottom:1px solid var(--border)">
+                      <input v-model="searchGroup" class="form-input" style="height:30px;font-size:12px" placeholder="Rechercher un groupe…" @click.stop />
+                    </div>
+                    <div style="max-height:220px;overflow-y:auto;padding:4px">
+                      <div v-if="!filteredDropdownGroups.length" style="padding:10px 12px;font-size:13px;color:var(--text-muted)">
+                        {{ availableGroups.length ? 'Aucun résultat' : 'Tous les groupes sont déjà assignés' }}
+                      </div>
+                      <button v-for="g in filteredDropdownGroups" :key="g.id" class="dropdown-item" @click="addGroup(g.id)">
+                        <div style="font-size:13px;font-weight:500">{{ g.name }}</div>
+                        <div style="font-size:11px;color:var(--text-muted);margin-top:1px">
+                          {{ g.description || `${g.rule_count} règle${g.rule_count !== 1 ? 's' : ''}` }}
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                </template>
+              </Teleport>
             </div>
           </div>
 
-          <div style="padding:16px">
-            <!-- Groupes disponibles avec checkboxes -->
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
-              <label
-                v-for="g in allGroups" :key="g.id"
-                style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:6px;border:1px solid var(--border);cursor:pointer;transition:border-color .15s,background .15s"
-                :style="isInGroup(g.id) ? 'border-color:var(--accent);background:rgba(139,92,246,.08)' : ''"
-              >
-                <input
-                  type="checkbox"
-                  :checked="isInGroup(g.id)"
-                  :disabled="!auth.isAdmin || savingGroups"
-                  @change="toggleGroup(g.id, $event.target.checked)"
-                  style="accent-color:var(--accent);width:15px;height:15px"
-                />
-                <div>
-                  <div style="font-size:13px;font-weight:500">{{ g.name }}</div>
-                  <div style="font-size:11px;color:var(--text-muted)">{{ g.rule_count }} règle{{ g.rule_count !== 1 ? 's' : '' }}</div>
-                </div>
-              </label>
+          <!-- Liste des groupes assignés -->
+          <div>
+            <div v-if="!assignedGroups.length" style="padding:20px;text-align:center;font-size:13px;color:var(--text-muted)">
+              Aucun groupe — groupe Défaut appliqué
             </div>
-
-            <div v-if="savingGroups" style="margin-top:8px;font-size:12px;color:var(--text-muted)">
-              Enregistrement…
+            <div
+              v-for="g in assignedGroups" :key="g.id"
+              class="group-row"
+            >
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:500">{{ g.name }}</div>
+                <div v-if="g.description" style="font-size:11px;color:var(--text-muted);margin-top:1px">{{ g.description }}</div>
+                <div v-else style="font-size:11px;color:var(--text-muted);margin-top:1px">{{ g.rule_count }} règle{{ g.rule_count !== 1 ? 's' : '' }}</div>
+              </div>
+              <button v-if="auth.isAdmin" class="btn btn-danger btn-sm btn-icon group-row-del" @click="removeGroup(g.id)" :disabled="savingGroups">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                  <path d="M10 11v6M14 11v6M9 6V4h6v2"/>
+                </svg>
+              </button>
             </div>
           </div>
         </div>
@@ -180,13 +205,49 @@ const users       = ref([])
 const allGroups   = ref([])
 const selected    = ref(null)
 const search      = ref('')
-const savingGroups = ref(false)
-const saving       = ref(false)
-const formError    = ref('')
-const showModal    = ref(false)
-const editing      = ref(null)
-const deleteTarget = ref(null)
-const form         = ref({ ip_address: '', label: '' })
+const savingGroups     = ref(false)
+const saving           = ref(false)
+const formError        = ref('')
+const showModal        = ref(false)
+const editing          = ref(null)
+const deleteTarget     = ref(null)
+const form             = ref({ ip_address: '', label: '' })
+const showAddDropdown  = ref(false)
+const addBtnRef        = ref(null)
+const ddPos            = ref({ top: 0, right: 0 })
+const searchGroup      = ref('')
+
+const filteredDropdownGroups = computed(() => {
+  const q = searchGroup.value.toLowerCase()
+  return availableGroups.value.filter(g =>
+    !q || g.name.toLowerCase().includes(q) || (g.description || '').toLowerCase().includes(q)
+  )
+})
+
+function toggleDropdown() {
+  if (!showAddDropdown.value) {
+    const rect = addBtnRef.value.getBoundingClientRect()
+    ddPos.value = { top: rect.bottom + 6, right: window.innerWidth - rect.right }
+    searchGroup.value = ''
+  }
+  showAddDropdown.value = !showAddDropdown.value
+}
+
+function closeDropdown() {
+  showAddDropdown.value = false
+  searchGroup.value = ''
+}
+
+const assignedGroups = computed(() => {
+  if (!selected.value) return []
+  return selected.value.groups
+    .map(g => allGroups.value.find(ag => ag.id === g.id) ?? g)
+    .filter(g => !g.is_default)
+})
+
+const availableGroups = computed(() =>
+  allGroups.value.filter(g => !g.is_default && !isInGroup(g.id))
+)
 
 const filteredUsers = computed(() => {
   const q = search.value.toLowerCase()
@@ -226,6 +287,15 @@ async function toggleGroup(gid, checked) {
   } finally {
     savingGroups.value = false
   }
+}
+
+async function addGroup(gid) {
+  closeDropdown()
+  await toggleGroup(gid, true)
+}
+
+async function removeGroup(gid) {
+  await toggleGroup(gid, false)
 }
 
 function openCreate() {
@@ -284,3 +354,32 @@ onMounted(async () => {
   await Promise.all([loadUsers(), groupsApi.list().then(r => { allGroups.value = r.data })])
 })
 </script>
+
+<style scoped>
+.group-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background .1s;
+}
+.group-row:last-child { border-bottom: none; }
+.group-row:hover { background: var(--surface2); }
+.group-row-del { opacity: 0; transition: opacity .15s; }
+.group-row:hover .group-row-del { opacity: 1; }
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text);
+  transition: background .1s;
+}
+.dropdown-item:hover { background: var(--surface2); }
+</style>
