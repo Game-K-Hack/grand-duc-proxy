@@ -193,9 +193,10 @@ async def test_access(
         .order_by(FilterRule.priority)
     )).scalars().all()
 
-    # Index des group_rules pour les groupes de cet utilisateur
-    # { rule_id: (group_id, group_name, action) }
-    group_rule_map: dict[int, tuple[int, str, str]] = {}
+    # Index des group_rules : rule_id → (group_id, group_name) du premier groupe l'ayant activée
+    # L'action vient de la règle globale (FilterRule.action), pas du groupe.
+    group_rule_first: dict[int, tuple[int, str]] = {}
+    activated_rule_ids: set[int] = set()
     if group_ids:
         rows = (await db.execute(
             select(GroupRule, ClientGroup.name.label("gname"))
@@ -203,14 +204,66 @@ async def test_access(
             .where(GroupRule.group_id.in_(group_ids))
         )).all()
         for r in rows:
-            rule_id = r.GroupRule.rule_id
-            # Si la même règle est dans plusieurs groupes, garde la première
-            # (on pourrait affiner avec une priorité de groupe — pour l'instant FIFO)
-            if rule_id not in group_rule_map:
-                group_rule_map[rule_id] = (r.GroupRule.group_id, r.gname, r.GroupRule.action)
+            rid = r.GroupRule.rule_id
+            activated_rule_ids.add(rid)
+            if rid not in group_rule_first:
+                group_rule_first[rid] = (r.GroupRule.group_id, r.gname)
 
     url = body.url
 
+    # ── Groupes explicites ────────────────────────────────────────────────────
+    # Logique identique au proxy Rust : Allow (action de la règle) gagne sur Block.
+    # Si l'utilisateur est dans un groupe qui a une règle "allow" correspondante → autorisé.
+    # Sinon si une règle "block" correspond dans un groupe → bloqué.
+    if group_ids:
+        found_block_rule = None
+
+        for rule in all_rules:
+            try:
+                matches = bool(re.search(rule.pattern, url, re.IGNORECASE))
+            except re.error:
+                continue
+            if not matches or rule.id not in activated_rule_ids:
+                continue
+
+            gid, gname = group_rule_first[rule.id]
+
+            if rule.action == "allow":
+                # Règle allow → accès accordé immédiatement
+                return TestAccessOut(
+                    url=url, blocked=False,
+                    reason=RuleMatch(
+                        rule_id=rule.id, pattern=rule.pattern, action="allow",
+                        group_id=gid, group_name=gname, source="group",
+                    ),
+                    user_ip=u.ip_address, user_label=u.label,
+                    groups=[g.name for g in user_groups],
+                )
+            else:
+                # Règle block — continue à chercher un allow dans un autre groupe
+                if found_block_rule is None:
+                    found_block_rule = (rule, gid, gname)
+
+        if found_block_rule is not None:
+            rule, gid, gname = found_block_rule
+            return TestAccessOut(
+                url=url, blocked=True,
+                reason=RuleMatch(
+                    rule_id=rule.id, pattern=rule.pattern, action="block",
+                    group_id=gid, group_name=gname, source="group",
+                ),
+                user_ip=u.ip_address, user_label=u.label,
+                groups=[g.name for g in user_groups],
+            )
+
+        # Aucune règle de groupe ne correspond → autorisé
+        return TestAccessOut(
+            url=url, blocked=False, reason=None,
+            user_ip=u.ip_address, user_label=u.label,
+            groups=[g.name for g in user_groups],
+        )
+
+    # ── Groupe par défaut / règle globale (utilisateur sans groupe explicite) ──
     for rule in all_rules:
         try:
             matches = bool(re.search(rule.pattern, url, re.IGNORECASE))
@@ -219,29 +272,15 @@ async def test_access(
         if not matches:
             continue
 
-        # La règle correspond — cherche d'abord si un groupe la surcharge
-        if rule.id in group_rule_map:
-            gid, gname, gaction = group_rule_map[rule.id]
-            return TestAccessOut(
-                url=url, blocked=(gaction == "block"),
-                reason=RuleMatch(
-                    rule_id=rule.id, pattern=rule.pattern, action=gaction,
-                    group_id=gid, group_name=gname, source="group",
-                ),
-                user_ip=u.ip_address, user_label=u.label,
-                groups=[g.name for g in user_groups],
-            )
-        else:
-            # Règle globale
-            return TestAccessOut(
-                url=url, blocked=(rule.action == "block"),
-                reason=RuleMatch(
-                    rule_id=rule.id, pattern=rule.pattern, action=rule.action,
-                    group_id=None, group_name=None, source="global",
-                ),
-                user_ip=u.ip_address, user_label=u.label,
-                groups=[g.name for g in user_groups],
-            )
+        return TestAccessOut(
+            url=url, blocked=(rule.action == "block"),
+            reason=RuleMatch(
+                rule_id=rule.id, pattern=rule.pattern, action=rule.action,
+                group_id=None, group_name=None, source="global",
+            ),
+            user_ip=u.ip_address, user_label=u.label,
+            groups=[g.name for g in user_groups],
+        )
 
     # Aucune règle ne correspond → autorisé
     return TestAccessOut(

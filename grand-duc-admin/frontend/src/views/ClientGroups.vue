@@ -81,10 +81,10 @@
           <table>
             <thead>
               <tr>
-                <th style="width:48px;text-align:center">Actif</th>
+                <th style="width:48px;text-align:center">Appliquée</th>
                 <th>Pattern</th>
                 <th style="width:80px;text-align:center">Priorité</th>
-                <th style="width:110px">Action globale</th>
+                <th style="width:110px">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -92,7 +92,7 @@
                 v-for="row in filteredRules" :key="row.rule.id"
                 :style="row.active ? 'background:var(--surface2)' : ''"
               >
-                <!-- Toggle activer/désactiver -->
+                <!-- Toggle appliquer/ignorer cette règle dans le groupe -->
                 <td style="text-align:center">
                   <label class="toggle-wrap" v-if="auth.isAdmin">
                     <input
@@ -117,7 +117,7 @@
                 <!-- Priorité -->
                 <td style="text-align:center;color:var(--text-muted);font-size:12px">{{ row.rule.priority }}</td>
 
-                <!-- Action globale -->
+                <!-- Action (définie sur la règle, pas sur le groupe) -->
                 <td>
                   <span :class="row.rule.action === 'block' ? 'badge badge-block' : 'badge badge-allow'"
                     style="font-size:11px">
@@ -256,7 +256,7 @@ async function toggleRule(row, checked) {
   savingRow.value = row.rule.id
   try {
     if (checked) {
-      // Tous les groupes : même action que la règle globale
+      // L'action du groupe = même que l'action de la règle (définie sur la règle)
       await groupsApi.addRule(selected.value.id, { rule_id: row.rule.id, action: row.rule.action })
     } else {
       await groupsApi.deleteRule(selected.value.id, row.groupRuleId)

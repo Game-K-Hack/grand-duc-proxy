@@ -143,12 +143,14 @@ Un utilisateur peut appartenir à plusieurs groupes simultanément.
 id         BIGSERIAL PRIMARY KEY
 group_id   BIGINT REFERENCES client_groups(id) ON DELETE CASCADE
 rule_id    BIGINT REFERENCES filter_rules(id)  ON DELETE CASCADE
-action     TEXT CHECK IN ('block','allow')      -- peut différer de l'action globale
+action     TEXT CHECK IN ('block','allow')      -- stocké en DB mais IGNORÉ par le proxy
 created_at TIMESTAMPTZ DEFAULT NOW()
 UNIQUE (group_id, rule_id)
 ```
-Permet à un groupe d'activer une règle avec une action différente de la globale.
-Ex : règle globale `block youtube.com` → groupe "Directeurs" l'active en `allow`.
+⚠️ **Modèle simplifié** : La colonne `action` de `group_rules` est présente en DB mais **ignorée**.
+L'action vient toujours de `filter_rules.action`. Un groupe active/désactive simplement une règle.
+L'interface admin (ClientGroups.vue) envoie `action = rule.action` lors de l'activation — sans
+permettre à l'utilisateur de choisir une action différente.
 
 ---
 
@@ -172,25 +174,39 @@ windows-sys  = { version = "0.52", features = ["Win32_System_Console"] }
 ### Structs principales
 - `FilterAction` : enum `Block` / `Allow`
 - `FilterRule` : `{ id: i64, pattern: Regex, action: FilterAction }`
-- `FilterRuleRow` : `sqlx::FromRow` pour lecture DB
-- `ClientProfile` : `{ client_user_id: i64, group_id: Option<i64> }` — supprimé en v4, remplacé par :
-- `ClientCache` : `{ ip_to_profile: HashMap<String, ClientProfile>, group_rules: HashMap<i64, Vec<(i64, FilterAction)>> }`
-  - clé group_rules : group_id → liste de (rule_id, action)
+- `ClientCache` :
+  - `ip_to_user_id: HashMap<String, i64>` — IP → client_user_id
+  - `user_groups: HashMap<i64, Vec<i64>>` — client_user_id → liste de group_ids
+  - `group_rules: HashMap<i64, HashSet<i64>>` — group_id → ensemble de rule_ids actifs
+  - `default_group_id: Option<i64>` — ID du groupe par défaut
+  - `default_group_rules: HashSet<i64>` — rule_ids du groupe par défaut
 - `AppState` : `{ db_pool: PgPool, rules_cache: Arc<RwLock<Vec<FilterRule>>>, client_cache: Arc<RwLock<ClientCache>> }`
 - `ProxyHandler` : implémente `HttpHandler` de hudsucker
 
 ### Logique de filtrage (`is_blocked(client_ip, url)`)
 ```
-Pour chaque règle (triées par priorité croissante) :
-  Si règle.pattern match url :
-    1. L'IP est-elle connue dans client_cache ?
-       → Récupère ses group_ids
-       → Pour chaque groupe, cherche si cette règle est dans group_rules
-       → Si oui : applique l'action du groupe (priorité groupe)
-    2. Sinon : applique l'action globale de la règle
-    → RETURN résultat
-Aucune règle ne correspond → RETURN false (autorisé)
+Niveau 1 — Groupes explicites (utilisateur connu avec au moins 1 groupe) :
+  Pour chaque règle (triées par priorité croissante) :
+    Si règle.pattern match url :
+      Pour chaque groupe de l'utilisateur :
+        Si groupe possède cette règle :
+          Si règle.action == Allow → RETURN false (allow wins immédiatement)
+          Sinon → found_block = true (continue à chercher un allow)
+  RETURN found_block
+
+Niveau 2 — Groupe par défaut (IP inconnue ou utilisateur sans groupe) :
+  Première règle matching ET dans default_group_rules → applique son action
+
+Niveau 3 — Règle globale directe (si pas de groupe par défaut configuré) :
+  Première règle matching → applique son action
+
+Aucune règle ne correspond → RETURN false (autorisé par défaut)
 ```
+
+### CONNECT (tunnels HTTPS)
+Les requêtes CONNECT sont logguées en DB (`method="CONNECT"`, `blocked=false`) pour
+visualiser tout le trafic, y compris les apps qui échouent au niveau TLS sans générer
+de requête HTTP. Le filtrage effectif se fait sur les requêtes HTTP décryptées.
 
 ### CA persistante
 - `grand-duc-ca.key` : clé privée PKCS#8 DER (générée au premier lancement)

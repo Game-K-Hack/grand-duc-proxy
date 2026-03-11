@@ -93,7 +93,8 @@ pub struct ClientCache {
     pub ip_to_user_id:      HashMap<String, i64>,
     /// client_user_id → liste de group_ids
     pub user_groups:        HashMap<i64, Vec<i64>>,
-    /// group_id → ensemble des rule_ids actifs (l'action vient toujours de la règle globale)
+    /// group_id → ensemble des rule_ids actifs dans ce groupe
+    /// L'action vient toujours de FilterRule.action (définie sur la règle globale)
     pub group_rules:        HashMap<i64, HashSet<i64>>,
     /// ID du groupe par défaut
     pub default_group_id:   Option<i64>,
@@ -127,7 +128,6 @@ struct ClientUserGroupRow {
 struct GroupRuleRow {
     group_id: i64,
     rule_id:  i64,
-    action:   String,
 }
 
 #[derive(sqlx::FromRow)]
@@ -219,7 +219,7 @@ impl AppState {
 
         // 3. Règles actives par groupe
         let group_rule_rows = sqlx::query_as::<_, GroupRuleRow>(
-            "SELECT group_id, rule_id, action FROM group_rules"
+            "SELECT group_id, rule_id FROM group_rules"
         )
         .fetch_all(&self.db_pool)
         .await?;
@@ -247,7 +247,6 @@ impl AppState {
             if Some(gr.group_id) == default_id {
                 cache.default_group_rules.insert(gr.rule_id);
             } else {
-                // Tous les groupes : on note que la règle est active (action = globale)
                 cache.group_rules
                     .entry(gr.group_id)
                     .or_default()
@@ -265,64 +264,107 @@ impl AppState {
 
     /// Détermine si une URL doit être bloquée pour un client donné.
     ///
-    /// Chaîne de priorité (de la plus haute à la plus basse) :
-    ///   1. Override groupe  (client_user → group_ids → group_rules)
-    ///   2. Règle globale    (filter_rules.action)
-    ///
-    /// Si l'IP n'est pas enregistrée → on applique uniquement les règles globales.
-    /// Si l'IP appartient à plusieurs groupes, le premier groupe ayant un override gagne.
+    /// Chaîne de priorité :
+    ///   1. Groupes explicites : tous les groupes de l'utilisateur sont examinés.
+    ///      Si AUCUN groupe autorise ET qu'au moins un bloque → bloqué.
+    ///      Un groupe avec une règle Allow prend le dessus sur tout blocage (privilège).
+    ///   2. Groupe par défaut (utilisateur sans groupe / IP inconnue)
+    ///   3. Règle globale directe (si aucun groupe par défaut configuré)
     pub async fn is_blocked(&self, client_ip: &str, url: &str) -> bool {
         let rules   = self.rules_cache.read().await;
         let clients = self.client_cache.read().await;
 
         let user_id = clients.ip_to_user_id.get(client_ip);
 
-        debug!("is_blocked ip={} url={} user_id={:?} default_group={:?} nb_rules={}",
-            client_ip, url, user_id, clients.default_group_id, rules.len());
-
-        for rule in rules.iter() {
-            if !rule.matches(url) {
-                continue;
+        // ── Log de contexte : qui fait la requête ────────────────────────────
+        match user_id {
+            None => debug!(
+                "[FILTRAGE] IP={} → non enregistrée → groupe par défaut | url={}",
+                client_ip, url
+            ),
+            Some(&uid) => {
+                let groups = clients.user_groups.get(&uid);
+                let glist  = groups
+                    .map(|g| g.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "))
+                    .unwrap_or_else(|| "aucun".to_owned());
+                debug!(
+                    "[FILTRAGE] IP={} → user_id={} → groupes=[{}] | nb_règles={} | url={}",
+                    client_ip, uid, glist, rules.len(), url
+                );
             }
+        }
 
-            // ── Niveau 1 : utilisateur connu avec groupes explicites ───────────
-            // La règle est bloquante si elle est active dans au moins un groupe de l'utilisateur
-            // ET que l'action globale est block. Même logique pour allow.
-            if let Some(&uid) = user_id {
-                if let Some(groups) = clients.user_groups.get(&uid) {
-                    if !groups.is_empty() {
+        // ── Niveau 1 : utilisateur connu avec groupes explicites ─────────────
+        if let Some(&uid) = user_id {
+            if let Some(groups) = clients.user_groups.get(&uid) {
+                if !groups.is_empty() {
+                    let mut found_block = false;
+
+                    for rule in rules.iter() {
+                        if !rule.matches(url) { continue; }
+                        debug!(
+                            "  [règle id={} prio=? pat='{}' {:?}] correspond à l'URL",
+                            rule.id, rule.pattern, rule.action
+                        );
                         for &gid in groups {
-                            if let Some(rule_set) = clients.group_rules.get(&gid) {
-                                if rule_set.contains(&rule.id) {
-                                    debug!("  → groupe {} règle {} : action globale {:?}", gid, rule.id, rule.action);
-                                    return rule.action == FilterAction::Block;
+                            match clients.group_rules.get(&gid) {
+                                None => debug!("    groupe {} → aucune règle configurée", gid),
+                                Some(rule_set) => {
+                                    if rule_set.contains(&rule.id) {
+                                        if rule.action == FilterAction::Allow {
+                                            debug!("    groupe {} → POSSÈDE règle {} (Allow) → AUTORISÉ immédiatement", gid, rule.id);
+                                            return false;
+                                        } else {
+                                            debug!("    groupe {} → POSSÈDE règle {} (Block) → blocage potentiel", gid, rule.id);
+                                            found_block = true;
+                                        }
+                                    } else {
+                                        debug!("    groupe {} → ne possède pas la règle {}", gid, rule.id);
+                                    }
                                 }
                             }
                         }
-                        debug!("  → groupes explicites sans règle matching → autorisé");
-                        continue;
                     }
-                }
-                debug!("  → utilisateur connu sans groupe → groupe par défaut");
-            }
 
-            // ── Niveau 2 : groupe par défaut (utilisateur sans groupe / IP inconnue)
-            // L'action vient toujours de la règle globale (le toggle active/désactive seulement)
+                    debug!(
+                        "  → décision finale (groupes explicites) : {}",
+                        if found_block { "BLOQUÉ" } else { "AUTORISÉ (aucune règle ne correspond)" }
+                    );
+                    return found_block;
+                } else {
+                    debug!("  → user {} n'a aucun groupe → groupe par défaut", uid);
+                }
+            } else {
+                debug!("  → user {} absent de user_groups → groupe par défaut", uid);
+            }
+        }
+
+        // ── Niveau 2 : groupe par défaut (utilisateur sans groupe / IP inconnue) ──
+        for rule in rules.iter() {
+            if !rule.matches(url) { continue; }
             if clients.default_group_id.is_some() {
                 if clients.default_group_rules.contains(&rule.id) {
-                    debug!("  → groupe par défaut règle {} : {:?} (action globale)", rule.id, rule.action);
+                    debug!(
+                        "  → groupe par défaut : règle {} ({:?}) → {}",
+                        rule.id, rule.action,
+                        if rule.action == FilterAction::Block { "BLOQUÉ" } else { "AUTORISÉ" }
+                    );
                     return rule.action == FilterAction::Block;
                 }
-                debug!("  → groupe par défaut sans règle matching → autorisé");
                 continue;
             }
 
             // ── Niveau 3 : règle globale (aucun groupe par défaut configuré) ───
-            debug!("  → règle globale : {:?}", rule.action);
+            debug!(
+                "  → règle globale {} ({:?}) → {}",
+                rule.id, rule.action,
+                if rule.action == FilterAction::Block { "BLOQUÉ" } else { "AUTORISÉ" }
+            );
             return rule.action == FilterAction::Block;
         }
 
-        false  // aucune règle ne correspond → autoriser
+        debug!("  → aucune règle ne correspond → AUTORISÉ par défaut");
+        false
     }
 
     // ── Logging async ────────────────────────────────────────────────────────
@@ -428,10 +470,22 @@ impl HttpHandler for ProxyHandler {
         // pas le body HTML d'une réponse 403 à un CONNECT, ils affichent leur
         // propre page d'erreur. Le blocage réel se fait sur la requête HTTP
         // décryptée (étape 4 ci-dessous).
+        // Le CONNECT est loggé en DB pour permettre de voir tout le trafic
+        // (notamment les apps qui échouent au niveau TLS sans générer de HTTP).
         if method == "CONNECT" {
-            if is_pinned_host(&host) {
+            let pinned = is_pinned_host(&host);
+            if pinned {
                 info!("BYPASS   [CONNECT] {}  (certificate pinning)", req.uri());
+            } else {
+                info!("TUNNEL   [CONNECT] {}", req.uri());
             }
+            self.state.log_access_background(
+                client_ip,
+                req.uri().to_string(),  // format "host:port"
+                "CONNECT".to_owned(),
+                false,
+                user_agent,
+            );
             return RequestOrResponse::Request(req);
         }
 
