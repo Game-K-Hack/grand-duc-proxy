@@ -191,7 +191,13 @@
           </div>
         </div>
         <div class="card">
-          <div class="card-title">🌐 Top domaines visités</div>
+          <div class="card-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20a14.5 14.5 0 0 0 0-20M2 12h20"/>
+              </g>
+            </svg>
+            Top domaines visités</div>
           <div class="table-wrap">
             <table>
               <thead><tr><th>Domaine</th><th style="text-align:right">Total</th><th style="text-align:right">Bloqués</th></tr></thead>

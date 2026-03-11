@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import engine, Base
 from config   import settings
-from routers  import auth, rules, logs, stats, users
+from routers  import auth, rules, logs, stats, users, client_groups, client_users
 
 
 @asynccontextmanager
@@ -38,5 +38,7 @@ app.include_router(rules.router, prefix="/api/rules", tags=["Règles"])
 app.include_router(logs.router,  prefix="/api/logs",  tags=["Logs"])
 app.include_router(stats.router, prefix="/api/stats", tags=["Statistiques"])
 app.include_router(users.router, prefix="/api/users", tags=["Utilisateurs"])
+app.include_router(client_groups.router, prefix="/api/client-groups", tags=["Groupes clients"])
+app.include_router(client_users.router,  prefix="/api/client-users",  tags=["Utilisateurs clients"])
 
 # uvicorn main:app --reload --port 8000

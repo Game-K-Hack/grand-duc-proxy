@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 from database import Base
 
@@ -41,3 +41,35 @@ class User(Base):
     enabled:         Mapped[bool]       = mapped_column(Boolean, default=True)
     created_at:      Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_login:      Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+class ClientGroup(Base):
+    __tablename__ = "client_groups"
+    id:          Mapped[int]        = mapped_column(BigInteger, primary_key=True)
+    name:        Mapped[str]        = mapped_column(Text, unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at:  Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ClientUser(Base):
+    __tablename__ = "client_users"
+    id:         Mapped[int]        = mapped_column(BigInteger, primary_key=True)
+    ip_address: Mapped[str]        = mapped_column(Text, unique=True, nullable=False)
+    label:      Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ClientUserGroups(Base):
+    """Table de jonction many-to-many utilisateurs ↔ groupes."""
+    __tablename__ = "client_user_groups"
+    user_id:  Mapped[int] = mapped_column(BigInteger, ForeignKey("client_users.id",  ondelete="CASCADE"), primary_key=True)
+    group_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("client_groups.id", ondelete="CASCADE"), primary_key=True)
+
+
+class GroupRule(Base):
+    """Association règle ↔ groupe avec action spécifique au groupe."""
+    __tablename__ = "group_rules"
+    id:        Mapped[int]      = mapped_column(BigInteger, primary_key=True)
+    group_id:  Mapped[int]      = mapped_column(BigInteger, ForeignKey("client_groups.id", ondelete="CASCADE"), nullable=False)
+    rule_id:   Mapped[int]      = mapped_column(BigInteger, ForeignKey("filter_rules.id",  ondelete="CASCADE"), nullable=False)
+    action:    Mapped[str]      = mapped_column(String(10), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

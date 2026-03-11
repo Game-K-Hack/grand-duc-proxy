@@ -11,8 +11,8 @@
 //!                              └───────────────┘
 //!
 //! Variables d'environnement :
-//!   DATABASE_URL  postgresql://user:pass@host/db   (requis)
-//!   PROXY_ADDR    0.0.0.0:8080                     (optionnel, défaut : 0.0.0.0:8080)
+//!   DATABASE_URL_PROXY  postgresql://user:pass@host/db   (requis)
+//!   PROXY_ADDR    0.0.0.0:8080                           (optionnel, défaut : 0.0.0.0:8080)
 //!
 //! Interface d'administration :
 //!   Configurer le proxy navigateur sur 127.0.0.1:8080, puis visiter http://grand-duc.proxy/
@@ -21,6 +21,7 @@ use std::{net::SocketAddr, path::PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use std::path::Path;
+use std::collections::HashMap;
 
 use anyhow::{anyhow, Result};
 use hudsucker::{
@@ -84,6 +85,18 @@ impl FilterRule {
     }
 }
 
+/// Cache de tous les clients et leurs overrides de groupe.
+/// Rechargé périodiquement depuis PostgreSQL.
+#[derive(Debug, Default)]
+pub struct ClientCache {
+    /// IP → client_user_id
+    pub ip_to_user_id: HashMap<String, i64>,
+    /// client_user_id → liste de group_ids
+    pub user_groups:   HashMap<i64, Vec<i64>>,
+    /// group_id → (rule_id → action)
+    pub group_rules:   HashMap<i64, HashMap<i64, FilterAction>>,
+}
+
 // ── Ligne brute lue depuis PostgreSQL ────────────────────────────────────────
 
 #[derive(sqlx::FromRow)]
@@ -92,6 +105,25 @@ struct FilterRuleRow {
     pattern:     String,
     action:      String,
     description: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct ClientUserRow {
+    id:         i64,
+    ip_address: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct ClientUserGroupRow {
+    user_id:  i64,
+    group_id: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct GroupRuleRow {
+    group_id: i64,
+    rule_id:  i64,
+    action:   String,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,17 +138,23 @@ pub struct AppState {
     /// Lecture très fréquente (chaque requête) → RwLock<Vec<…>>.
     /// Écriture rare (toutes les N minutes) → accès exclusif bref.
     pub rules_cache: Arc<RwLock<Vec<FilterRule>>>,
+    pub client_cache: Arc<RwLock<ClientCache>>,
 }
 
 impl AppState {
     /// Initialise le state : connexion PostgreSQL + premier chargement du cache.
     pub async fn new(database_url: &str) -> Result<Self> {
-        let db_pool = PgPool::connect(database_url).await?;
+        // Force UTF-8 pour éviter le panic sur les messages d'erreur PostgreSQL en WIN1252
+        let sep = if database_url.contains('?') { '&' } else { '?' };
+        let url_utf8 = format!("{}{}options=-c%20client_encoding%3DUTF8", database_url, sep);
+        let db_pool = PgPool::connect(&url_utf8).await?;
         let state = Self {
             db_pool,
             rules_cache: Arc::new(RwLock::new(Vec::new())),
+            client_cache: Arc::new(RwLock::new(ClientCache::default())),
         };
         state.refresh_rules_cache().await?;
+        state.refresh_client_cache().await?;
         Ok(state)
     }
 
@@ -155,17 +193,95 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn refresh_client_cache(&self) -> Result<()> {
+        // 1. Utilisateurs clients (IP → user_id)
+        let users = sqlx::query_as::<_, ClientUserRow>(
+            "SELECT id, ip_address FROM client_users"
+        )
+        .fetch_all(&self.db_pool)
+        .await?;
+
+        // 2. Appartenance aux groupes (many-to-many)
+        let user_groups = sqlx::query_as::<_, ClientUserGroupRow>(
+            "SELECT user_id, group_id FROM client_user_groups"
+        )
+        .fetch_all(&self.db_pool)
+        .await?;
+
+        // 3. Règles actives par groupe
+        let group_rule_rows = sqlx::query_as::<_, GroupRuleRow>(
+            "SELECT group_id, rule_id, action FROM group_rules"
+        )
+        .fetch_all(&self.db_pool)
+        .await?;
+
+        let mut cache = ClientCache::default();
+
+        for u in users {
+            cache.ip_to_user_id.insert(u.ip_address, u.id);
+        }
+
+        for ug in user_groups {
+            cache.user_groups.entry(ug.user_id).or_default().push(ug.group_id);
+        }
+
+        for gr in group_rule_rows {
+            let action = if gr.action.eq_ignore_ascii_case("block") {
+                FilterAction::Block
+            } else {
+                FilterAction::Allow
+            };
+            cache.group_rules
+                .entry(gr.group_id)
+                .or_default()
+                .insert(gr.rule_id, action);
+        }
+
+        let count = cache.ip_to_user_id.len();
+        *self.client_cache.write().await = cache;
+        info!("Cache clients rafraîchi — {} IP enregistrées", count);
+        Ok(())
+    }
+
     // ── Filtrage ─────────────────────────────────────────────────────────────
 
-    /// Détermine si une URL doit être bloquée.
-    pub async fn is_blocked(&self, url: &str) -> bool {
-        let rules = self.rules_cache.read().await;
+    /// Détermine si une URL doit être bloquée pour un client donné.
+    ///
+    /// Chaîne de priorité (de la plus haute à la plus basse) :
+    ///   1. Override groupe  (client_user → group_ids → group_rules)
+    ///   2. Règle globale    (filter_rules.action)
+    ///
+    /// Si l'IP n'est pas enregistrée → on applique uniquement les règles globales.
+    /// Si l'IP appartient à plusieurs groupes, le premier groupe ayant un override gagne.
+    pub async fn is_blocked(&self, client_ip: &str, url: &str) -> bool {
+        let rules   = self.rules_cache.read().await;
+        let clients = self.client_cache.read().await;
+
+        let user_id = clients.ip_to_user_id.get(client_ip);
+
         for rule in rules.iter() {
-            if rule.matches(url) {
-                return rule.action == FilterAction::Block;
+            if !rule.matches(url) {
+                continue;
             }
+
+            // ── Niveau 1 : override groupe ────────────────────────────────────
+            if let Some(&uid) = user_id {
+                if let Some(groups) = clients.user_groups.get(&uid) {
+                    for &gid in groups {
+                        if let Some(rule_map) = clients.group_rules.get(&gid) {
+                            if let Some(action) = rule_map.get(&rule.id) {
+                                return *action == FilterAction::Block;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Niveau 2 : règle globale ──────────────────────────────────────
+            return rule.action == FilterAction::Block;
         }
-        false
+
+        false  // aucune règle ne correspond → autoriser
     }
 
     // ── Logging async ────────────────────────────────────────────────────────
@@ -242,8 +358,6 @@ impl HttpHandler for ProxyHandler {
         req: Request<Body>,
     ) -> RequestOrResponse {
         let method    = req.method().to_string();
-        let uri       = req.uri().to_string();
-        let host      = req.uri().host().unwrap_or("unknown").to_owned();
         let client_ip = ctx.client_addr.ip().to_string();
         let user_agent = req
             .headers()
@@ -251,31 +365,59 @@ impl HttpHandler for ProxyHandler {
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned);
 
+        // Hôte depuis l'URI (HTTP absolu) ou depuis le header Host (HTTPS intercepté)
+        let host = req.uri().host()
+            .map(str::to_owned)
+            .or_else(|| {
+                req.headers()
+                    .get(header::HOST)
+                    .and_then(|v| v.to_str().ok())
+                    .map(|h| h.split(':').next().unwrap_or(h).to_owned())
+            })
+            .unwrap_or_else(|| "unknown".to_owned());
+
         // ── 1. Interface d'administration Grand-Duc ───────────────────────
         if host == ADMIN_HOST {
-            info!("ADMIN    [{method}] {uri}");
+            info!("ADMIN    [{method}] {}", req.uri());
             return RequestOrResponse::Response(serve_asset(req.uri().path()));
         }
 
-        // ── 2. Certificate pinning — tunnel direct sans interception TLS ──
-        if method == "CONNECT" && is_pinned_host(&host) {
-            info!("BYPASS   [{method}] {uri}  (certificate pinning)");
+        // ── 2. CONNECT : laisser hudsucker faire le MitM TLS ─────────────
+        // On ne bloque JAMAIS au stade CONNECT : les navigateurs n'affichent
+        // pas le body HTML d'une réponse 403 à un CONNECT, ils affichent leur
+        // propre page d'erreur. Le blocage réel se fait sur la requête HTTP
+        // décryptée (étape 4 ci-dessous).
+        if method == "CONNECT" {
+            if is_pinned_host(&host) {
+                info!("BYPASS   [CONNECT] {}  (certificate pinning)", req.uri());
+            }
             return RequestOrResponse::Request(req);
         }
 
-        // ── 3. Filtrage ───────────────────────────────────────────────────
-        if self.state.is_blocked(&uri).await {
-            warn!("BLOQUÉ   [{method}] {uri}");
+        // ── 3. Reconstruire l'URL effective ──────────────────────────────
+        // Pour les requêtes HTTPS interceptées par hudsucker, l'URI est
+        // relative ("/" ou "/path?q=…"). On reconstruit l'URL complète
+        // depuis le header Host.
+        let effective_url = if req.uri().scheme().is_none() && host != "unknown" {
+            let pq = req.uri().path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
+            format!("https://{}{}", host, pq)
+        } else {
+            req.uri().to_string()
+        };
+
+        // ── 4. Filtrage ───────────────────────────────────────────────────
+        if self.state.is_blocked(&client_ip, &effective_url).await {
+            warn!("BLOQUÉ   [{method}] {effective_url}");
             self.state.log_access_background(
-                client_ip, uri.clone(), method, true, user_agent,
+                client_ip, effective_url.clone(), method, true, user_agent,
             );
-            return RequestOrResponse::Response(build_blocked_response(&uri));
+            return RequestOrResponse::Response(build_blocked_response(&effective_url));
         }
 
-        // ── 4. Trafic autorisé ────────────────────────────────────────────
-        info!("AUTORISÉ [{method}] {uri}");
+        // ── 5. Trafic autorisé ────────────────────────────────────────────
+        info!("AUTORISÉ [{method}] {effective_url}");
         self.state.log_access_background(
-            client_ip, uri, method, false, user_agent,
+            client_ip, effective_url, method, false, user_agent,
         );
         RequestOrResponse::Request(req)
     }
@@ -533,7 +675,7 @@ async fn main() -> Result<()> {
         .init();
 
     // ── Configuration ─────────────────────────────────────────────────────────
-    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+    let database_url = std::env::var("DATABASE_URL_PROXY").unwrap_or_else(|_| {
         "postgresql://proxy_user:password@localhost/proxy_db".to_owned()
     });
     let listen_addr: SocketAddr = std::env::var("PROXY_ADDR")
@@ -556,6 +698,9 @@ async fn main() -> Result<()> {
                 if let Err(e) = state_bg.refresh_rules_cache().await {
                     error!("Rafraîchissement du cache échoué: {}", e);
                 }
+                if let Err(e) = state_bg.refresh_client_cache().await {
+                    error!("Rafraîchissement clients échoué: {}", e);
+                } 
             }
         });
     }

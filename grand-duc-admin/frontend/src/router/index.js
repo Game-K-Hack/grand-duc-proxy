@@ -2,11 +2,14 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const routes = [
-  { path: '/login',     name: 'Login',     component: () => import('@/views/Login.vue'),     meta: { public: true } },
-  { path: '/',          name: 'Dashboard', component: () => import('@/views/Dashboard.vue') },
-  { path: '/rules',     name: 'Rules',     component: () => import('@/views/Rules.vue') },
-  { path: '/logs',      name: 'Logs',      component: () => import('@/views/Logs.vue') },
-  { path: '/users',     name: 'Users',     component: () => import('@/views/Users.vue'),     meta: { admin: true } },
+  { path: '/login',         name: 'Login',        component: () => import('@/views/Login.vue'),        meta: { public: true } },
+  { path: '/',              name: 'Dashboard',    component: () => import('@/views/Dashboard.vue') },
+  { path: '/rules',         name: 'Rules',        component: () => import('@/views/Rules.vue') },
+  { path: '/logs',          name: 'Logs',         component: () => import('@/views/Logs.vue') },
+  { path: '/client-groups', name: 'ClientGroups', component: () => import('@/views/ClientGroups.vue'), meta: { admin: true } },
+  { path: '/client-users',  name: 'ClientUsers',  component: () => import('@/views/ClientUsers.vue'),  meta: { admin: true } },
+  { path: '/test-access',   name: 'TestAccess',   component: () => import('@/views/TestAccess.vue'),   meta: { admin: true } },
+  { path: '/users',         name: 'Users',        component: () => import('@/views/Users.vue'),        meta: { admin: true } },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
