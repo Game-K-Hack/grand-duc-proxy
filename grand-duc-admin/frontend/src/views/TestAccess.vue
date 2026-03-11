@@ -13,8 +13,8 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
           <!-- Sélection utilisateur -->
           <div class="form-group">
-            <label class="form-label">Utilisateur (IP)</label>
-            <select v-model="selectedUserId" class="form-select">
+            <label class="form-label" :style="errors.user ? 'color:var(--red)' : ''">Utilisateur (IP)</label>
+            <select v-model="selectedUserId" class="form-select" :class="{ 'input-error': errors.user }" @change="errors.user = false">
               <option value="">— Choisir un utilisateur —</option>
               <option v-for="u in users" :key="u.id" :value="u.id">
                 {{ u.label || u.ip_address }}
@@ -41,19 +41,21 @@
 
         <!-- URL à tester -->
         <div class="form-group" style="margin-bottom:16px">
-          <label class="form-label">URL à tester</label>
+          <label class="form-label" :style="errors.url ? 'color:var(--red)' : ''">URL à tester</label>
           <input
             v-model="testUrl"
             class="form-input"
+            :class="{ 'input-error': errors.url }"
             placeholder="https://www.youtube.com/watch?v=..."
             @keyup.enter="runTest"
+            @input="errors.url = false"
           />
         </div>
 
         <button
           class="btn btn-primary"
           @click="runTest"
-          :disabled="!selectedUserId || !testUrl.trim() || testing"
+          :disabled="testing"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -180,13 +182,16 @@ const testUrl        = ref('')
 const result         = ref(null)
 const testing        = ref(false)
 const history        = ref([])
+const errors         = ref({ user: false, url: false })
 
 const selectedUser = computed(() =>
   users.value.find(u => u.id === Number(selectedUserId.value)) ?? null
 )
 
 async function runTest() {
-  if (!selectedUserId.value || !testUrl.value.trim()) return
+  errors.value.user = !selectedUserId.value
+  errors.value.url  = !testUrl.value.trim()
+  if (errors.value.user || errors.value.url) return
   testing.value = true
   try {
     const { data } = await clientUsersApi.testAccess({
@@ -206,3 +211,10 @@ onMounted(async () => {
   users.value = data
 })
 </script>
+
+<style scoped>
+.input-error {
+  border-color: var(--red) !important;
+  box-shadow: 0 0 0 2px rgba(248, 81, 73, .15);
+}
+</style>
