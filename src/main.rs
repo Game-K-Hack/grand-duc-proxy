@@ -785,6 +785,61 @@ fn base64_decode(s: &str) -> Result<Vec<u8>> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Fichier de log rotatif
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Writer qui pivote le fichier de log quand il dépasse `max_bytes`.
+///
+/// Comportement à la rotation :
+///   grand-duc.log  →  grand-duc.log.old  (écrase l'ancienne archive)
+///   un nouveau grand-duc.log vide est créé.
+///
+/// Le seuil est configurable via la variable d'environnement `LOG_MAX_BYTES`
+/// (défaut : 500 Mo).
+struct RotatingFile {
+    path:      PathBuf,
+    file:      std::fs::File,
+    max_bytes: u64,
+    current:   u64,
+}
+
+impl RotatingFile {
+    fn new(path: &Path, max_bytes: u64) -> std::io::Result<Self> {
+        let current = if path.exists() { path.metadata()?.len() } else { 0 };
+        let file = std::fs::OpenOptions::new()
+            .create(true).append(true).open(path)?;
+        Ok(Self { path: path.to_owned(), file, max_bytes, current })
+    }
+
+    fn rotate(&mut self) {
+        let mut backup_name = self.path.file_name().unwrap().to_os_string();
+        backup_name.push(".old");
+        let backup = self.path.with_file_name(backup_name);
+        let _ = std::fs::rename(&self.path, &backup);
+        match std::fs::OpenOptions::new()
+            .create(true).write(true).truncate(true).open(&self.path)
+        {
+            Ok(f)  => { self.file = f; self.current = 0; }
+            Err(e) => eprintln!("[grand-duc] Rotation du log échouée : {e}"),
+        }
+    }
+}
+
+impl std::io::Write for RotatingFile {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.current >= self.max_bytes {
+            self.rotate();
+        }
+        let n = self.file.write(buf)?;
+        self.current += n as u64;
+        Ok(n)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.file.flush()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Console Windows
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -819,16 +874,18 @@ async fn main() -> Result<()> {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| "grand_duc=debug,warn".into());
 
-    // Fichier de log (sans couleurs ANSI) pour la page d'administration
-    let log_file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("grand-duc.log")
+    // Taille max du fichier de log (défaut 500 Mo, override via LOG_MAX_BYTES)
+    let max_log_bytes = std::env::var("LOG_MAX_BYTES")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(500 * 1024 * 1024);
+
+    let rotating = RotatingFile::new(Path::new("grand-duc.log"), max_log_bytes)
         .expect("Impossible d'ouvrir grand-duc.log");
 
     let file_layer = tracing_subscriber::fmt::layer()
         .with_ansi(false)
-        .with_writer(std::sync::Mutex::new(log_file));
+        .with_writer(std::sync::Mutex::new(rotating));
 
     let stdout_layer = tracing_subscriber::fmt::layer()
         .with_ansi(true);
