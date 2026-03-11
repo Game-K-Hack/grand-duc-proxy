@@ -63,6 +63,12 @@ export const groupsApi = {
   deleteRule: (id, ruleId)   => api.delete(`/client-groups/${id}/rules/${ruleId}`),
 }
 
+// ── Killswitch ────────────────────────────────────────────────────────────────
+export const killswitchApi = {
+  get: ()       => api.get('/killswitch'),
+  set: (active) => api.post('/killswitch', { active }),
+}
+
 // ── TLS Bypass ────────────────────────────────────────────────────────────────
 export const tlsBypassApi = {
   list:   ()     => api.get('/tls-bypass'),

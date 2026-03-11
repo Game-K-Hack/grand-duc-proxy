@@ -83,3 +83,10 @@ class TlsBypass(Base):
     host:        Mapped[str]        = mapped_column(Text, unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     created_at:  Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AppSetting(Base):
+    """Paramètres globaux de l'application (clé/valeur)."""
+    __tablename__ = "app_settings"
+    key:   Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)

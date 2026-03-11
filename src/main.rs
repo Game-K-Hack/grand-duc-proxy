@@ -19,6 +19,7 @@
 
 use std::{net::SocketAddr, path::PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::path::Path;
 use std::collections::{HashMap, HashSet};
@@ -153,8 +154,11 @@ pub struct AppState {
     /// Cache en mémoire des règles actives.
     /// Lecture très fréquente (chaque requête) → RwLock<Vec<…>>.
     /// Écriture rare (toutes les N minutes) → accès exclusif bref.
-    pub rules_cache: Arc<RwLock<Vec<FilterRule>>>,
+    pub rules_cache:  Arc<RwLock<Vec<FilterRule>>>,
     pub client_cache: Arc<RwLock<ClientCache>>,
+    /// Killswitch : si true, tout le trafic est autorisé sans filtrage.
+    /// Vérifié à chaque requête (AtomicBool = lock-free), mis à jour toutes les 10s.
+    pub killswitch:   Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -166,11 +170,13 @@ impl AppState {
         let db_pool = PgPool::connect(&url_utf8).await?;
         let state = Self {
             db_pool,
-            rules_cache: Arc::new(RwLock::new(Vec::new())),
+            rules_cache:  Arc::new(RwLock::new(Vec::new())),
             client_cache: Arc::new(RwLock::new(ClientCache::default())),
+            killswitch:   Arc::new(AtomicBool::new(false)),
         };
         state.refresh_rules_cache().await?;
         state.refresh_client_cache().await?;
+        state.refresh_killswitch().await?;
         Ok(state)
     }
 
@@ -279,6 +285,27 @@ impl AppState {
         Ok(())
     }
 
+    // ── Killswitch ───────────────────────────────────────────────────────────
+
+    /// Recharge l'état du killswitch depuis PostgreSQL.
+    pub async fn refresh_killswitch(&self) -> Result<()> {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT value FROM app_settings WHERE key = 'killswitch'"
+        )
+        .fetch_optional(&self.db_pool)
+        .await?;
+
+        let active = row.map(|(v,)| v == "true").unwrap_or(false);
+        let was    = self.killswitch.swap(active, Ordering::Relaxed);
+
+        if active && !was {
+            warn!("🔴 KILLSWITCH ACTIVÉ — tout le trafic est autorisé sans filtrage !");
+        } else if !active && was {
+            info!("🟢 Killswitch désactivé — filtrage rétabli.");
+        }
+        Ok(())
+    }
+
     // ── Filtrage ─────────────────────────────────────────────────────────────
 
     /// Détermine si une URL doit être bloquée pour un client donné.
@@ -290,6 +317,12 @@ impl AppState {
     ///   2. Groupe par défaut (utilisateur sans groupe / IP inconnue)
     ///   3. Règle globale directe (si aucun groupe par défaut configuré)
     pub async fn is_blocked(&self, client_ip: &str, url: &str) -> bool {
+        // Killswitch : court-circuit immédiat, lock-free
+        if self.killswitch.load(Ordering::Relaxed) {
+            debug!("[KILLSWITCH] actif — {} autorisé", url);
+            return false;
+        }
+
         let rules   = self.rules_cache.read().await;
         let clients = self.client_cache.read().await;
 
@@ -817,6 +850,21 @@ async fn main() -> Result<()> {
                 if let Err(e) = state_bg.refresh_client_cache().await {
                     error!("Rafraîchissement clients échoué: {}", e);
                 } 
+            }
+        });
+    }
+
+    // ── Tâche de rafraîchissement rapide du killswitch (toutes les 10s) ───
+    {
+        let state_bg = state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(10));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                if let Err(e) = state_bg.refresh_killswitch().await {
+                    error!("Rafraîchissement killswitch échoué: {}", e);
+                }
             }
         });
     }
