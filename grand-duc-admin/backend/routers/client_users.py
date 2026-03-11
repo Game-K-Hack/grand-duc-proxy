@@ -190,7 +190,7 @@ async def test_access(
     all_rules = (await db.execute(
         select(FilterRule)
         .where(FilterRule.enabled == True)
-        .order_by(FilterRule.priority)
+        .order_by(FilterRule.priority.desc())
     )).scalars().all()
 
     # Index des group_rules : rule_id → (group_id, group_name) du premier groupe l'ayant activée
@@ -212,12 +212,10 @@ async def test_access(
     url = body.url
 
     # ── Groupes explicites ────────────────────────────────────────────────────
-    # Logique identique au proxy Rust : Allow (action de la règle) gagne sur Block.
-    # Si l'utilisateur est dans un groupe qui a une règle "allow" correspondante → autorisé.
-    # Sinon si une règle "block" correspond dans un groupe → bloqué.
+    # Logique identique au proxy Rust : les règles sont parcourues par priorité
+    # croissante. La première règle qui matche ET active dans au moins un groupe
+    # gagne — qu'elle soit block ou allow.
     if group_ids:
-        found_block_rule = None
-
         for rule in all_rules:
             try:
                 matches = bool(re.search(rule.pattern, url, re.IGNORECASE))
@@ -227,29 +225,10 @@ async def test_access(
                 continue
 
             gid, gname = group_rule_first[rule.id]
-
-            if rule.action == "allow":
-                # Règle allow → accès accordé immédiatement
-                return TestAccessOut(
-                    url=url, blocked=False,
-                    reason=RuleMatch(
-                        rule_id=rule.id, pattern=rule.pattern, action="allow",
-                        group_id=gid, group_name=gname, source="group",
-                    ),
-                    user_ip=u.ip_address, user_label=u.label,
-                    groups=[g.name for g in user_groups],
-                )
-            else:
-                # Règle block — continue à chercher un allow dans un autre groupe
-                if found_block_rule is None:
-                    found_block_rule = (rule, gid, gname)
-
-        if found_block_rule is not None:
-            rule, gid, gname = found_block_rule
             return TestAccessOut(
-                url=url, blocked=True,
+                url=url, blocked=(rule.action == "block"),
                 reason=RuleMatch(
-                    rule_id=rule.id, pattern=rule.pattern, action="block",
+                    rule_id=rule.id, pattern=rule.pattern, action=rule.action,
                     group_id=gid, group_name=gname, source="group",
                 ),
                 user_ip=u.ip_address, user_label=u.label,

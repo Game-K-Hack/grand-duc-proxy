@@ -177,7 +177,7 @@ impl AppState {
             SELECT id, pattern, action, description
               FROM filter_rules
              WHERE enabled = TRUE
-             ORDER BY priority ASC
+             ORDER BY priority DESC
             "#,
         )
         .fetch_all(&self.db_pool)
@@ -298,39 +298,35 @@ impl AppState {
         if let Some(&uid) = user_id {
             if let Some(groups) = clients.user_groups.get(&uid) {
                 if !groups.is_empty() {
-                    let mut found_block = false;
-
+                    // Les règles sont triées par priorité croissante (plus petit = plus prioritaire).
+                    // La première règle qui matche ET qui est active dans au moins un groupe gagne.
                     for rule in rules.iter() {
                         if !rule.matches(url) { continue; }
+
+                        let active_group = groups.iter().find(|&&gid| {
+                            clients.group_rules.get(&gid)
+                                .map(|rs| rs.contains(&rule.id))
+                                .unwrap_or(false)
+                        });
+
+                        if let Some(&gid) = active_group {
+                            let blocked = rule.action == FilterAction::Block;
+                            debug!(
+                                "  → groupe {} → règle id={} pat='{}' ({:?}) → {}",
+                                gid, rule.id, rule.pattern, rule.action,
+                                if blocked { "BLOQUÉ" } else { "AUTORISÉ" }
+                            );
+                            return blocked;
+                        }
+
                         debug!(
-                            "  [règle id={} prio=? pat='{}' {:?}] correspond à l'URL",
+                            "  [règle id={} pat='{}' {:?}] correspond mais absente de tous les groupes → ignorée",
                             rule.id, rule.pattern, rule.action
                         );
-                        for &gid in groups {
-                            match clients.group_rules.get(&gid) {
-                                None => debug!("    groupe {} → aucune règle configurée", gid),
-                                Some(rule_set) => {
-                                    if rule_set.contains(&rule.id) {
-                                        if rule.action == FilterAction::Allow {
-                                            debug!("    groupe {} → POSSÈDE règle {} (Allow) → AUTORISÉ immédiatement", gid, rule.id);
-                                            return false;
-                                        } else {
-                                            debug!("    groupe {} → POSSÈDE règle {} (Block) → blocage potentiel", gid, rule.id);
-                                            found_block = true;
-                                        }
-                                    } else {
-                                        debug!("    groupe {} → ne possède pas la règle {}", gid, rule.id);
-                                    }
-                                }
-                            }
-                        }
                     }
 
-                    debug!(
-                        "  → décision finale (groupes explicites) : {}",
-                        if found_block { "BLOQUÉ" } else { "AUTORISÉ (aucune règle ne correspond)" }
-                    );
-                    return found_block;
+                    debug!("  → AUTORISÉ (aucune règle active ne correspond)");
+                    return false;
                 } else {
                     debug!("  → user {} n'a aucun groupe → groupe par défaut", uid);
                 }
