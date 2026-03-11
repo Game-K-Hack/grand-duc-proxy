@@ -114,7 +114,7 @@
             <div>
               <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">ACTION</div>
               <span :class="result.reason.action === 'block' ? 'badge badge-block' : 'badge badge-allow'">
-                {{ result.reason.action === 'block' ? '🚫 block' : '✅ allow' }}
+                {{ result.reason.action === 'block' ? '🚫 bloqué' : '✅ autorisé' }}
               </span>
             </div>
             <div>

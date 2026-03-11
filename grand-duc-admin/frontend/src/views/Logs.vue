@@ -27,20 +27,25 @@
         <table>
           <thead>
             <tr>
-              <th>Date</th>
-              <th style="width:110px">IP Client</th>
-              <th>Méthode</th>
+              <th style="width:150px">Date</th>
+              <th style="width:150px">IP Client</th>
+              <th style="width:300px">Utilisateur</th>
+              <th style="width:100px">Méthode</th>
               <th>Hôte</th>
               <th>URL</th>
               <th style="width:90px">Statut</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-if="loading"><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">Chargement…</td></tr>
-            <tr v-else-if="!logs.length"><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">Aucun résultat</td></tr>
+            <tr v-if="loading"><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Chargement…</td></tr>
+            <tr v-else-if="!logs.length"><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Aucun résultat</td></tr>
             <tr v-for="log in logs" :key="log.id">
               <td class="mono" style="font-size:11px;color:var(--text-muted);white-space:nowrap">{{ fmtDate(log.accessed_at) }}</td>
               <td class="mono" style="font-size:12px">{{ log.client_ip || '—' }}</td>
+              <td style="font-size:12px">
+                <span v-if="log.client_label" style="color:var(--text)">{{ log.client_label }}</span>
+                <span v-else style="color:var(--text-muted)">Inconnu</span>
+              </td>
               <td><span class="badge" style="background:rgba(88,166,255,.12);color:var(--blue)">{{ log.method }}</span></td>
               <td class="mono" style="font-size:12px">{{ log.host }}</td>
               <td class="url-cell mono" style="font-size:11px" :title="log.url">{{ log.url }}</td>

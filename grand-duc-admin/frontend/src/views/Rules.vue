@@ -41,7 +41,7 @@
             <tr v-for="rule in rules" :key="rule.id">
               <td style="color:var(--text-muted);text-align:center">{{ rule.priority }}</td>
               <td><code class="mono" style="font-size:12px;color:var(--blue)">{{ rule.pattern }}</code></td>
-              <td><span :class="rule.action === 'block' ? 'badge badge-block' : 'badge badge-allow'">{{ rule.action }}</span></td>
+              <td><span :class="rule.action === 'block' ? 'badge badge-block' : 'badge badge-allow'">{{ rule.action === 'block' ? 'bloqué' : 'autorisé' }}</span></td>
               <td style="color:var(--text-muted)">{{ rule.description || '—' }}</td>
               <td>
                 <label class="toggle" v-if="auth.isAdmin">
@@ -90,8 +90,8 @@
           <div class="form-group">
             <label class="form-label">Action *</label>
             <select v-model="form.action" class="form-select">
-              <option value="block">block — Bloquer</option>
-              <option value="allow">allow — Autoriser</option>
+              <option value="block">Bloqué</option>
+              <option value="allow">Autorisé</option>
             </select>
           </div>
           <div class="form-group">

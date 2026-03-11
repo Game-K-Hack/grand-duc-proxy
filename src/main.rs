@@ -21,7 +21,7 @@ use std::{net::SocketAddr, path::PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use std::path::Path;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{anyhow, Result};
 use hudsucker::{
@@ -35,7 +35,7 @@ use rcgen::{BasicConstraints, CertificateParams, IsCa, KeyPair};
 use regex::Regex;
 use sqlx::PgPool;
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 // ── Assets statiques ─────────────────────────────────────────────────────────
 
@@ -90,11 +90,15 @@ impl FilterRule {
 #[derive(Debug, Default)]
 pub struct ClientCache {
     /// IP → client_user_id
-    pub ip_to_user_id: HashMap<String, i64>,
+    pub ip_to_user_id:      HashMap<String, i64>,
     /// client_user_id → liste de group_ids
-    pub user_groups:   HashMap<i64, Vec<i64>>,
-    /// group_id → (rule_id → action)
-    pub group_rules:   HashMap<i64, HashMap<i64, FilterAction>>,
+    pub user_groups:        HashMap<i64, Vec<i64>>,
+    /// group_id → ensemble des rule_ids actifs (l'action vient toujours de la règle globale)
+    pub group_rules:        HashMap<i64, HashSet<i64>>,
+    /// ID du groupe par défaut
+    pub default_group_id:   Option<i64>,
+    /// rule_ids actifs dans le groupe par défaut
+    pub default_group_rules: HashSet<i64>,
 }
 
 // ── Ligne brute lue depuis PostgreSQL ────────────────────────────────────────
@@ -124,6 +128,11 @@ struct GroupRuleRow {
     group_id: i64,
     rule_id:  i64,
     action:   String,
+}
+
+#[derive(sqlx::FromRow)]
+struct DefaultGroupRow {
+    id: i64,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -215,7 +224,15 @@ impl AppState {
         .fetch_all(&self.db_pool)
         .await?;
 
+        // 4. Groupe par défaut
+        let default_group = sqlx::query_as::<_, DefaultGroupRow>(
+            "SELECT id FROM client_groups WHERE is_default = TRUE LIMIT 1"
+        )
+        .fetch_optional(&self.db_pool)
+        .await?;
+
         let mut cache = ClientCache::default();
+        cache.default_group_id = default_group.map(|r| r.id);
 
         for u in users {
             cache.ip_to_user_id.insert(u.ip_address, u.id);
@@ -225,16 +242,17 @@ impl AppState {
             cache.user_groups.entry(ug.user_id).or_default().push(ug.group_id);
         }
 
+        let default_id = cache.default_group_id;
         for gr in group_rule_rows {
-            let action = if gr.action.eq_ignore_ascii_case("block") {
-                FilterAction::Block
+            if Some(gr.group_id) == default_id {
+                cache.default_group_rules.insert(gr.rule_id);
             } else {
-                FilterAction::Allow
-            };
-            cache.group_rules
-                .entry(gr.group_id)
-                .or_default()
-                .insert(gr.rule_id, action);
+                // Tous les groupes : on note que la règle est active (action = globale)
+                cache.group_rules
+                    .entry(gr.group_id)
+                    .or_default()
+                    .insert(gr.rule_id);
+            }
         }
 
         let count = cache.ip_to_user_id.len();
@@ -259,25 +277,48 @@ impl AppState {
 
         let user_id = clients.ip_to_user_id.get(client_ip);
 
+        debug!("is_blocked ip={} url={} user_id={:?} default_group={:?} nb_rules={}",
+            client_ip, url, user_id, clients.default_group_id, rules.len());
+
         for rule in rules.iter() {
             if !rule.matches(url) {
                 continue;
             }
 
-            // ── Niveau 1 : override groupe ────────────────────────────────────
+            // ── Niveau 1 : utilisateur connu avec groupes explicites ───────────
+            // La règle est bloquante si elle est active dans au moins un groupe de l'utilisateur
+            // ET que l'action globale est block. Même logique pour allow.
             if let Some(&uid) = user_id {
                 if let Some(groups) = clients.user_groups.get(&uid) {
-                    for &gid in groups {
-                        if let Some(rule_map) = clients.group_rules.get(&gid) {
-                            if let Some(action) = rule_map.get(&rule.id) {
-                                return *action == FilterAction::Block;
+                    if !groups.is_empty() {
+                        for &gid in groups {
+                            if let Some(rule_set) = clients.group_rules.get(&gid) {
+                                if rule_set.contains(&rule.id) {
+                                    debug!("  → groupe {} règle {} : action globale {:?}", gid, rule.id, rule.action);
+                                    return rule.action == FilterAction::Block;
+                                }
                             }
                         }
+                        debug!("  → groupes explicites sans règle matching → autorisé");
+                        continue;
                     }
                 }
+                debug!("  → utilisateur connu sans groupe → groupe par défaut");
             }
 
-            // ── Niveau 2 : règle globale ──────────────────────────────────────
+            // ── Niveau 2 : groupe par défaut (utilisateur sans groupe / IP inconnue)
+            // L'action vient toujours de la règle globale (le toggle active/désactive seulement)
+            if clients.default_group_id.is_some() {
+                if clients.default_group_rules.contains(&rule.id) {
+                    debug!("  → groupe par défaut règle {} : {:?} (action globale)", rule.id, rule.action);
+                    return rule.action == FilterAction::Block;
+                }
+                debug!("  → groupe par défaut sans règle matching → autorisé");
+                continue;
+            }
+
+            // ── Niveau 3 : règle globale (aucun groupe par défaut configuré) ───
+            debug!("  → règle globale : {:?}", rule.action);
             return rule.action == FilterAction::Block;
         }
 
@@ -669,7 +710,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "grand_duc=info,warn".into()),
+                .unwrap_or_else(|_| "grand_duc=debug,warn".into()),
         )
         .with_ansi(true)
         .init();

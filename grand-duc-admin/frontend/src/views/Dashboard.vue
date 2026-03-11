@@ -174,7 +174,14 @@
       <!-- ── Tables top domaines ────────────────────────────────────────── -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
         <div class="card">
-          <div class="card-title">🚫 Top domaines bloqués</div>
+          <div class="card-title" style="display:flex;align-items:center;gap:6px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+                <path d="M15.686 15A14.5 14.5 0 0 1 12 22a14.5 14.5 0 0 1 0-20a10 10 0 1 0 9.542 13M2 12h8.5M20 6V4a2 2 0 1 0-4 0v2"/>
+                <rect width="8" height="5" x="14" y="6" rx="1"/>
+              </g>
+            </svg>
+            Top domaines bloqués</div>
           <div class="table-wrap">
             <table>
               <thead><tr><th>Domaine</th><th style="text-align:right">Blocages</th></tr></thead>
@@ -191,7 +198,7 @@
           </div>
         </div>
         <div class="card">
-          <div class="card-title">
+          <div class="card-title" style="display:flex;align-items:center;gap:6px">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
                 <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20a14.5 14.5 0 0 0 0-20M2 12h20"/>

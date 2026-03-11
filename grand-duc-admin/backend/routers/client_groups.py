@@ -23,6 +23,7 @@ class GroupOut(BaseModel):
     id:           int
     name:         str
     description:  Optional[str]
+    is_default:   bool = False
     created_at:   str
     member_count: int = 0
     rule_count:   int = 0
@@ -59,7 +60,9 @@ async def list_groups(
     db:    AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
-    groups = (await db.execute(select(ClientGroup).order_by(ClientGroup.name))).scalars().all()
+    groups = (await db.execute(
+        select(ClientGroup).order_by(ClientGroup.is_default.desc(), ClientGroup.name)
+    )).scalars().all()
 
     # Compte membres par groupe
     mc = dict((await db.execute(
@@ -76,6 +79,7 @@ async def list_groups(
     return [
         GroupOut(
             id=g.id, name=g.name, description=g.description,
+            is_default=g.is_default,
             created_at=g.created_at.isoformat(),
             member_count=mc.get(g.id, 0),
             rule_count=rc.get(g.id, 0),
@@ -121,7 +125,9 @@ async def delete_group(
     db:    AsyncSession = Depends(get_db),
     _user: User = Depends(require_admin),
 ):
-    await get_group_or_404(db, group_id)
+    g = await get_group_or_404(db, group_id)
+    if g.is_default:
+        raise HTTPException(400, "Le groupe par défaut ne peut pas être supprimé")
     await db.execute(delete(ClientGroup).where(ClientGroup.id == group_id))
     await db.commit()
 

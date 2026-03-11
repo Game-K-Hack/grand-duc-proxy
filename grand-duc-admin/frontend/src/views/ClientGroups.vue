@@ -26,7 +26,10 @@
         >
           <div style="display:flex;align-items:center;justify-content:space-between">
             <div style="min-width:0;flex:1">
-              <div style="font-size:13px;font-weight:500">{{ g.name }}</div>
+              <div style="font-size:13px;font-weight:500;display:flex;align-items:center;gap:5px">
+                {{ g.name }}
+                <span v-if="g.is_default" style="font-size:10px;font-weight:600;background:var(--accent);color:#fff;border-radius:3px;padding:1px 5px;line-height:16px">Défaut</span>
+              </div>
               <div style="font-size:11px;color:var(--text-muted);margin-top:1px">
                 {{ g.member_count }} membre{{ g.member_count !== 1 ? 's' : '' }}
                 · {{ g.rule_count }} règle{{ g.rule_count !== 1 ? 's' : '' }}
@@ -39,7 +42,7 @@
                   <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
                 </svg>
               </button>
-              <button class="btn btn-danger btn-sm btn-icon" @click.stop="confirmDelete(g)">
+              <button v-if="!g.is_default" class="btn btn-danger btn-sm btn-icon" @click.stop="confirmDelete(g)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
                   <path d="M10 11v6M14 11v6M9 6V4h6v2"/>
@@ -59,7 +62,7 @@
         <div style="padding:12px 18px;border-bottom:1px solid var(--border)">
           <div style="font-weight:600;font-size:14px;margin-bottom:2px">{{ selected.name }}</div>
           <div style="font-size:12px;color:var(--text-muted)">
-            Activez les règles à appliquer aux membres de ce groupe.
+            {{ selected.description.length > 0 ? selected.description : 'Activez les règles à appliquer aux membres de ce groupe.' }}
           </div>
         </div>
 
@@ -117,8 +120,8 @@
                 <!-- Action globale -->
                 <td>
                   <span :class="row.rule.action === 'block' ? 'badge badge-block' : 'badge badge-allow'"
-                    style="opacity:.65;font-size:11px">
-                    {{ row.rule.action === 'block' ? '🚫 block' : '✅ allow' }}
+                    style="font-size:11px">
+                    {{ row.rule.action === 'block' ? 'bloqué' : 'autorisé' }}
                   </span>
                 </td>
 
@@ -253,9 +256,8 @@ async function toggleRule(row, checked) {
   savingRow.value = row.rule.id
   try {
     if (checked) {
-      // Active avec l'action inverse de la globale (cas d'usage le plus commun)
-      const defaultAction = row.rule.action === 'block' ? 'allow' : 'block'
-      await groupsApi.addRule(selected.value.id, { rule_id: row.rule.id, action: defaultAction })
+      // Tous les groupes : même action que la règle globale
+      await groupsApi.addRule(selected.value.id, { rule_id: row.rule.id, action: row.rule.action })
     } else {
       await groupsApi.deleteRule(selected.value.id, row.groupRuleId)
     }

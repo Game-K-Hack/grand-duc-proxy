@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from database import get_db
-from models   import AccessLog
+from models   import AccessLog, ClientUser
 from security import get_current_user
 from models   import User
 
@@ -13,14 +13,15 @@ router = APIRouter()
 
 
 class LogOut(BaseModel):
-    id:          int
-    client_ip:   Optional[str]
-    host:        Optional[str]
-    url:         str
-    method:      str
-    blocked:     bool
-    user_agent:  Optional[str]
-    accessed_at: str
+    id:           int
+    client_ip:    Optional[str]
+    client_label: Optional[str]
+    host:         Optional[str]
+    url:          str
+    method:       str
+    blocked:      bool
+    user_agent:   Optional[str]
+    accessed_at:  str
 
 
 class LogsListResponse(BaseModel):
@@ -37,13 +38,17 @@ async def list_logs(
     db:      AsyncSession = Depends(get_db),
     _user:   User = Depends(get_current_user),
 ):
-    q = select(AccessLog)
+    q = (
+        select(AccessLog, ClientUser.label.label("client_label"))
+        .outerjoin(ClientUser, AccessLog.client_ip == ClientUser.ip_address)
+    )
 
     if search:
         q = q.where(or_(
             AccessLog.host.ilike(f"%{search}%"),
             AccessLog.url.ilike(f"%{search}%"),
             AccessLog.client_ip.ilike(f"%{search}%"),
+            ClientUser.label.ilike(f"%{search}%"),
         ))
     if blocked is not None:
         q = q.where(AccessLog.blocked == blocked)
@@ -53,22 +58,23 @@ async def list_logs(
     total_q = select(func.count()).select_from(q.subquery())
     total   = (await db.execute(total_q)).scalar_one()
 
-    result  = await db.execute(q.offset(skip).limit(limit))
-    logs    = result.scalars().all()
+    result = await db.execute(q.offset(skip).limit(limit))
+    rows   = result.all()
 
     return LogsListResponse(
         items=[
             LogOut(
-                id=log.id,
-                client_ip=log.client_ip,
-                host=log.host,
-                url=log.url,
-                method=log.method,
-                blocked=log.blocked,
-                user_agent=log.user_agent,
-                accessed_at=log.accessed_at.isoformat(),
+                id=row.AccessLog.id,
+                client_ip=row.AccessLog.client_ip,
+                client_label=row.client_label,
+                host=row.AccessLog.host,
+                url=row.AccessLog.url,
+                method=row.AccessLog.method,
+                blocked=row.AccessLog.blocked,
+                user_agent=row.AccessLog.user_agent,
+                accessed_at=row.AccessLog.accessed_at.isoformat(),
             )
-            for log in logs
+            for row in rows
         ],
         total=total,
     )
