@@ -86,7 +86,7 @@
               <circle cx="12" cy="12" r="10"/>
               <path d="M4.93 4.93l14.14 14.14"/>
             </svg>
-            Exceptions proxy
+            Exceptions
           </router-link>
 
           <router-link class="nav-item" :class="{ active: $route.name === 'Certificates' }" to="/certificates">

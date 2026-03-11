@@ -92,26 +92,79 @@
             Importez votre propre CA. Le certificat doit être une CA (BasicConstraints CA=True) et la clé PKCS#8 DER doit correspondre.
           </div>
 
-          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+          <!-- Succès import -->
+          <div v-if="importSuccess" style="background:rgba(46,160,67,.1);border:1px solid var(--green);border-radius:6px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--green)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Certificat importé avec succès.
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+            <!-- Certificat -->
             <div>
-              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Certificat (.crt PEM)</label>
-              <input type="file" accept=".crt,.pem" @change="e => importCertFile = e.target.files[0]" style="font-size:12px;width:100%"/>
+              <label :style="`font-size:12px;font-weight:500;display:block;margin-bottom:5px;${importErrors.cert ? 'color:var(--red)' : 'color:var(--text-muted)'}`">
+                Certificat CA (.crt / .pem)
+                <span v-if="importErrors.cert" style="margin-left:6px">— {{ importErrors.cert }}</span>
+              </label>
+              <label style="display:block;cursor:pointer">
+                <input type="file" accept=".crt,.pem" style="display:none"
+                  @change="onCertFileChange" ref="certInput"/>
+                <div :style="`display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;border:1.5px dashed;font-size:12px;transition:.15s;
+                  ${importErrors.cert ? 'border-color:var(--red);background:rgba(248,81,73,.06)' :
+                    importCertFile   ? 'border-color:var(--green);background:rgba(46,160,67,.06)' :
+                                       'border-color:var(--border);background:var(--surface2)'}`">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    :stroke="importErrors.cert ? 'var(--red)' : importCertFile ? 'var(--green)' : 'var(--text-muted)'"
+                    stroke-width="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  <span :style="importCertFile ? 'color:var(--green);font-weight:500' : 'color:var(--text-muted)'">
+                    {{ importCertFile ? importCertFile.name : 'Choisir un fichier…' }}
+                  </span>
+                </div>
+              </label>
             </div>
+
+            <!-- Clé privée -->
             <div>
-              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Clé privée (.key PKCS#8 DER)</label>
-              <input type="file" accept=".key" @change="e => importKeyFile = e.target.files[0]" style="font-size:12px;width:100%"/>
+              <label :style="`font-size:12px;font-weight:500;display:block;margin-bottom:5px;${importErrors.key ? 'color:var(--red)' : 'color:var(--text-muted)'}`">
+                Clé privée (.key — PKCS#8 DER)
+                <span v-if="importErrors.key" style="margin-left:6px">— {{ importErrors.key }}</span>
+              </label>
+              <label style="display:block;cursor:pointer">
+                <input type="file" accept=".key" style="display:none"
+                  @change="onKeyFileChange" ref="keyInput"/>
+                <div :style="`display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;border:1.5px dashed;font-size:12px;transition:.15s;
+                  ${importErrors.key ? 'border-color:var(--red);background:rgba(248,81,73,.06)' :
+                    importKeyFile   ? 'border-color:var(--green);background:rgba(46,160,67,.06)' :
+                                      'border-color:var(--border);background:var(--surface2)'}`">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    :stroke="importErrors.key ? 'var(--red)' : importKeyFile ? 'var(--green)' : 'var(--text-muted)'"
+                    stroke-width="2">
+                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                  </svg>
+                  <span :style="importKeyFile ? 'color:var(--green);font-weight:500' : 'color:var(--text-muted)'">
+                    {{ importKeyFile ? importKeyFile.name : 'Choisir un fichier…' }}
+                  </span>
+                </div>
+              </label>
             </div>
           </div>
 
-          <div v-if="importError" style="font-size:12px;color:var(--red);margin-bottom:8px">{{ importError }}</div>
+          <!-- Erreur serveur -->
+          <div v-if="importError" style="background:rgba(248,81,73,.08);border:1px solid var(--red);border-radius:6px;padding:9px 12px;margin-bottom:12px;display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--red)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            {{ importError }}
+          </div>
 
-          <button class="btn btn-primary" style="width:100%" @click="doImport"
-            :disabled="actionLoading || !importCertFile || !importKeyFile">
+          <button class="btn btn-primary" style="width:100%" @click="doImport" :disabled="actionLoading">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            {{ actionLoading ? 'Import…' : 'Importer' }}
+            {{ actionLoading ? 'Vérification…' : 'Importer' }}
           </button>
         </div>
       </div>
@@ -196,6 +249,20 @@ const showGenConfirm  = ref(false)
 const importCertFile  = ref(null)
 const importKeyFile   = ref(null)
 const importError     = ref('')
+const importErrors    = ref({ cert: '', key: '' })
+const importSuccess   = ref(false)
+
+function onCertFileChange(e) {
+  importCertFile.value    = e.target.files[0] ?? null
+  importErrors.value.cert = ''
+  importSuccess.value     = false
+}
+
+function onKeyFileChange(e) {
+  importKeyFile.value    = e.target.files[0] ?? null
+  importErrors.value.key = ''
+  importSuccess.value    = false
+}
 
 const downloadUrl = certificatesApi.downloadUrl()
 
@@ -229,12 +296,19 @@ async function doGenerate() {
 }
 
 async function doImport() {
-  importError.value = ''
+  // Validation locale
+  importErrors.value.cert = importCertFile.value ? '' : 'Fichier requis'
+  importErrors.value.key  = importKeyFile.value  ? '' : 'Fichier requis'
+  importError.value   = ''
+  importSuccess.value = false
+  if (importErrors.value.cert || importErrors.value.key) return
+
   actionLoading.value = true
   try {
     const { data } = await certificatesApi.import(importCertFile.value, importKeyFile.value)
     certInfo.value        = data
     restartRequired.value = true
+    importSuccess.value   = true
     importCertFile.value  = null
     importKeyFile.value   = null
     const histRes = await certificatesApi.history()

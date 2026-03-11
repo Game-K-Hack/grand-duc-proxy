@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="page-header">
-      <h1 class="page-title">Exceptions proxy</h1>
+      <h1 class="page-title">Exceptions</h1>
     </div>
 
     <div class="card" style="margin-bottom:16px;padding:12px 16px;font-size:12px;color:var(--text-muted);border-left:3px solid var(--accent)">
