@@ -11,7 +11,8 @@ const routes = [
   { path: '/test-access',   name: 'TestAccess',   component: () => import('@/views/TestAccess.vue'),   meta: { admin: true } },
   { path: '/users',         name: 'Users',        component: () => import('@/views/Users.vue'),        meta: { admin: true } },
   { path: '/tls-bypass',   name: 'TlsBypass',    component: () => import('@/views/TlsBypass.vue'),    meta: { admin: true } },
-  { path: '/killswitch',   name: 'Killswitch',   component: () => import('@/views/Killswitch.vue'),   meta: { admin: true } },
+  { path: '/killswitch',    name: 'Killswitch',    component: () => import('@/views/Killswitch.vue'),    meta: { admin: true } },
+  { path: '/certificates', name: 'Certificates', component: () => import('@/views/Certificates.vue'), meta: { admin: true } },
   { path: '/documentation',  name: 'Documentation', component: () => import('@/views/Documentation.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]

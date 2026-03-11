@@ -71,6 +71,20 @@ export const killswitchApi = {
   verifyPassword: (password) => api.post('/killswitch/verify-password', { password }),
 }
 
+// ── Certificats CA ────────────────────────────────────────────────────────────
+export const certificatesApi = {
+  info:     ()                       => api.get('/certificates/info'),
+  generate: ()                       => api.post('/certificates/generate'),
+  import:   (certFile, keyFile)      => {
+    const form = new FormData()
+    form.append('cert_file', certFile)
+    form.append('key_file',  keyFile)
+    return api.post('/certificates/import', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  history:  ()                       => api.get('/certificates/history'),
+  downloadUrl: () => '/api/certificates/ca.crt',
+}
+
 // ── TLS Bypass ────────────────────────────────────────────────────────────────
 export const tlsBypassApi = {
   list:   ()     => api.get('/tls-bypass'),

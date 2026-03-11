@@ -6,6 +6,9 @@ class Settings():
     ALGORITHM:                    str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES:  int = 480
     ADMIN_CORS_ORIGIN:            str = "http://localhost:5173"
+    # Répertoire contenant les fichiers grand-duc-ca.crt / grand-duc-ca.key
+    # Doit correspondre au répertoire de travail du proxy au démarrage.
+    CERT_DIR:                     str = "D:/Bureau/grand-duc/target/debug"
 
     model_config = SettingsConfigDict(
         env_file=".env",

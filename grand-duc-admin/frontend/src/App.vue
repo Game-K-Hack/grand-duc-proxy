@@ -80,6 +80,14 @@
             Exceptions proxy
           </router-link>
 
+          <router-link class="nav-item" :class="{ active: $route.name === 'Certificates' }" to="/certificates">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0110 0v4"/>
+            </svg>
+            Certificats
+          </router-link>
+
           <router-link class="nav-item" :class="{ active: $route.name === 'Killswitch' }" to="/killswitch">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>

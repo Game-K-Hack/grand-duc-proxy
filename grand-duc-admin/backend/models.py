@@ -99,3 +99,16 @@ class KillswitchHistory(Base):
     action:     Mapped[str]      = mapped_column(Text, nullable=False)   # 'activated' | 'deactivated'
     username:   Mapped[str]      = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CertificateHistory(Base):
+    """Historique des générations/imports de certificat CA."""
+    __tablename__ = "certificate_history"
+    id:          Mapped[int]            = mapped_column(BigInteger, primary_key=True)
+    action:      Mapped[str]            = mapped_column(Text, nullable=False)  # 'generated' | 'imported'
+    username:    Mapped[str]            = mapped_column(Text, nullable=False)
+    subject:     Mapped[str | None]     = mapped_column(Text)
+    fingerprint: Mapped[str | None]     = mapped_column(Text)
+    not_before:  Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    not_after:   Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at:  Mapped[datetime]       = mapped_column(DateTime(timezone=True), server_default=func.now())
