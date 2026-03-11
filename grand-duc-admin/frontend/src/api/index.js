@@ -71,6 +71,13 @@ export const killswitchApi = {
   verifyPassword: (password) => api.post('/killswitch/verify-password', { password }),
 }
 
+// ── Contrôle proxy ────────────────────────────────────────────────────────────
+export const proxyApi = {
+  status:  ()  => api.get('/proxy/status'),
+  restart: ()  => api.post('/proxy/restart'),
+  logsUrl: ()  => `/api/proxy/logs?token=${localStorage.getItem('token')}`,
+}
+
 // ── Certificats CA ────────────────────────────────────────────────────────────
 export const certificatesApi = {
   info:     ()                       => api.get('/certificates/info'),

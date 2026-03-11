@@ -37,6 +37,7 @@ use regex::Regex;
 use sqlx::PgPool;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 // ── Assets statiques ─────────────────────────────────────────────────────────
 
@@ -815,12 +816,27 @@ async fn main() -> Result<()> {
     enable_ansi_console();
 
     // ── Logging ───────────────────────────────────────────────────────────────
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "grand_duc=debug,warn".into()),
-        )
-        .with_ansi(true)
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "grand_duc=debug,warn".into());
+
+    // Fichier de log (sans couleurs ANSI) pour la page d'administration
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("grand-duc.log")
+        .expect("Impossible d'ouvrir grand-duc.log");
+
+    let file_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .with_writer(std::sync::Mutex::new(log_file));
+
+    let stdout_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(true);
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(stdout_layer)
+        .with(file_layer)
         .init();
 
     // ── Configuration ─────────────────────────────────────────────────────────

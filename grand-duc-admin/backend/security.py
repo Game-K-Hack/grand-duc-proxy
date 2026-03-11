@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,10 +35,21 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db:    AsyncSession = Depends(get_db),
 ) -> User:
+    return await _decode_user(token, db)
+
+
+async def get_current_user_query(
+    token: str = Query(...),
+    db:    AsyncSession = Depends(get_db),
+) -> User:
+    """Variante de get_current_user pour EventSource (token en query param)."""
+    return await _decode_user(token, db)
+
+
+async def _decode_user(token: str, db: AsyncSession) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Token invalide ou expiré",
-        headers={"WWW-Authenticate": "Bearer"},
     )
     try:
         payload  = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
@@ -47,7 +58,6 @@ async def get_current_user(
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-
     result = await db.execute(select(User).where(User.username == username))
     user   = result.scalar_one_or_none()
     if user is None or not user.enabled:

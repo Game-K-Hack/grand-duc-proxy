@@ -13,6 +13,7 @@ const routes = [
   { path: '/tls-bypass',   name: 'TlsBypass',    component: () => import('@/views/TlsBypass.vue'),    meta: { admin: true } },
   { path: '/killswitch',    name: 'Killswitch',    component: () => import('@/views/Killswitch.vue'),    meta: { admin: true } },
   { path: '/certificates', name: 'Certificates', component: () => import('@/views/Certificates.vue'), meta: { admin: true } },
+  { path: '/proxy-logs',   name: 'ProxyLogs',   component: () => import('@/views/ProxyLogs.vue'),   meta: { admin: true } },
   { path: '/documentation',  name: 'Documentation', component: () => import('@/views/Documentation.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import engine, Base
 from config   import settings
-from routers  import auth, rules, logs, stats, users, client_groups, client_users, tls_bypass, killswitch, certificates
+from routers  import auth, rules, logs, stats, users, client_groups, client_users, tls_bypass, killswitch, certificates, proxy_control
 
 
 @asynccontextmanager
@@ -42,6 +42,7 @@ app.include_router(client_groups.router, prefix="/api/client-groups", tags=["Gro
 app.include_router(client_users.router,  prefix="/api/client-users",  tags=["Utilisateurs clients"])
 app.include_router(tls_bypass.router,    prefix="/api/tls-bypass",    tags=["TLS Bypass"])
 app.include_router(killswitch.router,    prefix="/api/killswitch",    tags=["Killswitch"])
-app.include_router(certificates.router, prefix="/api/certificates",  tags=["Certificats"])
+app.include_router(certificates.router,   prefix="/api/certificates",  tags=["Certificats"])
+app.include_router(proxy_control.router, prefix="/api/proxy",         tags=["Proxy"])
 
 # uvicorn main:app --reload --port 8000

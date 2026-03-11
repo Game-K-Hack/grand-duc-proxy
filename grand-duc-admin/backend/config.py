@@ -9,6 +9,10 @@ class Settings():
     # Répertoire contenant les fichiers grand-duc-ca.crt / grand-duc-ca.key
     # Doit correspondre au répertoire de travail du proxy au démarrage.
     CERT_DIR:                     str = "D:/Bureau/grand-duc/target/debug"
+    # Contrôle du proxy Rust
+    PROXY_EXE:                    str = "D:/Bureau/grand-duc/target/debug/grand-duc-proxy.exe"
+    PROXY_WORK_DIR:               str = "D:/Bureau/grand-duc/target/debug"
+    PROXY_LOG_FILE:               str = "D:/Bureau/grand-duc/target/debug/grand-duc.log"
 
     model_config = SettingsConfigDict(
         env_file=".env",
