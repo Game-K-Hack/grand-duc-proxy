@@ -27,34 +27,67 @@
         <table>
           <thead>
             <tr>
-              <th style="width:150px">Date</th>
-              <th style="width:150px">IP Client</th>
-              <th style="width:300px">Utilisateur</th>
-              <th style="width:100px">Méthode</th>
-              <th>Hôte</th>
+              <th style="width:140px">Date</th>
+              <th style="width:120px">IP Client</th>
+              <th style="width:180px">Utilisateur</th>
+              <th style="width:76px">Méthode</th>
               <th>URL</th>
-              <th style="width:90px">Statut</th>
+              <th style="width:80px">Statut</th>
+              <th style="width:32px"></th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading"><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Chargement…</td></tr>
             <tr v-else-if="!logs.length"><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Aucun résultat</td></tr>
-            <tr v-for="log in logs" :key="log.id">
-              <td class="mono" style="font-size:11px;color:var(--text-muted);white-space:nowrap">{{ fmtDate(log.accessed_at) }}</td>
-              <td class="mono" style="font-size:12px">{{ log.client_ip || '—' }}</td>
-              <td style="font-size:12px">
-                <span v-if="log.client_label" style="color:var(--text)">{{ log.client_label }}</span>
-                <span v-else style="color:var(--text-muted)">Inconnu</span>
-              </td>
-              <td><span class="badge" style="background:rgba(88,166,255,.12);color:var(--blue)">{{ log.method }}</span></td>
-              <td class="mono" style="font-size:12px">{{ log.host }}</td>
-              <td class="url-cell mono" style="font-size:11px" :title="log.url">{{ log.url }}</td>
-              <td>
-                <span :class="log.blocked ? 'badge badge-block' : 'badge badge-allow'">
-                  {{ log.blocked ? 'Bloqué' : 'OK' }}
-                </span>
-              </td>
-            </tr>
+            <template v-for="log in logs" :key="log.id">
+              <tr class="log-row" :class="{ 'log-row-expanded': expanded === log.id }" @click="toggle(log.id)">
+                <td class="mono" style="font-size:11px;color:var(--text-muted);white-space:nowrap">{{ fmtDate(log.accessed_at) }}</td>
+                <td class="mono" style="font-size:12px">{{ log.client_ip || '—' }}</td>
+                <td style="font-size:12px">
+                  <span v-if="log.client_label" style="color:var(--text)">{{ log.client_label }}</span>
+                  <span v-else style="color:var(--text-muted)">—</span>
+                </td>
+                <td><span class="badge" style="background:rgba(88,166,255,.12);color:var(--blue)">{{ log.method }}</span></td>
+                <td class="mono" style="font-size:11px;max-width:0">
+                  <div class="url-truncate" :title="log.url">{{ log.url }}</div>
+                </td>
+                <td>
+                  <span :class="log.blocked ? 'badge badge-block' : 'badge badge-allow'">
+                    {{ log.blocked ? 'Bloqué' : 'OK' }}
+                  </span>
+                </td>
+                <td style="text-align:center">
+                  <svg class="expand-icon" :class="{ 'expand-icon-open': expanded === log.id }"
+                    width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </td>
+              </tr>
+              <tr v-if="expanded === log.id" class="detail-row">
+                <td colspan="7" style="padding:0">
+                  <div class="detail-panel">
+                    <div class="detail-grid">
+                      <div class="detail-item">
+                        <div class="detail-label">Hôte</div>
+                        <div class="detail-value mono">{{ extractHost(log.url) }}</div>
+                      </div>
+                      <div class="detail-item">
+                        <div class="detail-label">Date complète</div>
+                        <div class="detail-value mono">{{ fmtDateFull(log.accessed_at) }}</div>
+                      </div>
+                      <div class="detail-item" style="grid-column:1/-1">
+                        <div class="detail-label">URL complète</div>
+                        <div class="detail-value mono" style="word-break:break-all;white-space:pre-wrap">{{ log.url }}</div>
+                      </div>
+                      <div class="detail-item" style="grid-column:1/-1">
+                        <div class="detail-label">User-Agent</div>
+                        <div class="detail-value mono" style="word-break:break-all">{{ log.user_agent || '—' }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -80,6 +113,7 @@ const limit         = 50
 const search        = ref('')
 const filterBlocked = ref(null)
 const loading       = ref(false)
+const expanded      = ref(null)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit)))
 
@@ -90,6 +124,26 @@ function fmtDate(iso) {
   })
 }
 
+function fmtDateFull(iso) {
+  return new Date(iso).toLocaleString('fr-FR', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+}
+
+function extractHost(url) {
+  try {
+    return new URL(url).hostname
+  } catch {
+    // CONNECT style: "hostname:443"
+    return url.split(':')[0] || url
+  }
+}
+
+function toggle(id) {
+  expanded.value = expanded.value === id ? null : id
+}
+
 let debounceTimer = null
 function debouncedLoad() {
   clearTimeout(debounceTimer)
@@ -98,6 +152,7 @@ function debouncedLoad() {
 
 async function load() {
   loading.value = true
+  expanded.value = null
   try {
     const params = { skip: page.value * limit, limit, search: search.value }
     if (filterBlocked.value !== null) params.blocked = filterBlocked.value
@@ -111,3 +166,54 @@ async function load() {
 
 onMounted(load)
 </script>
+
+<style scoped>
+.log-row {
+  cursor: pointer;
+  transition: background .1s;
+}
+.log-row:hover { background: var(--surface2); }
+.log-row-expanded { background: var(--surface2); }
+
+.url-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expand-icon {
+  color: var(--text-muted);
+  opacity: .5;
+  transition: transform .2s, opacity .2s;
+}
+.log-row:hover .expand-icon { opacity: 1; }
+.expand-icon-open {
+  transform: rotate(180deg);
+  opacity: 1;
+}
+
+.detail-row td { background: var(--surface2); }
+.detail-panel {
+  padding: 14px 20px 16px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 24px;
+}
+.detail-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.detail-value {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+}
+</style>
