@@ -70,8 +70,13 @@
       >
         <!-- Verdict -->
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-          <div style="font-size:40px;line-height:1">
-            {{ result.blocked ? '🚫' : '✅' }}
+          <div style="line-height:1">
+            <svg v-if="result.blocked" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="1.8">
+              <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+            </svg>
+            <svg v-else width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.8">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
           </div>
           <div>
             <div style="font-size:20px;font-weight:700"
@@ -116,7 +121,7 @@
             <div>
               <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">ACTION</div>
               <span :class="result.reason.action === 'block' ? 'badge badge-block' : 'badge badge-allow'">
-                {{ result.reason.action === 'block' ? '🚫 bloqué' : '✅ autorisé' }}
+                {{ result.reason.action === 'block' ? 'bloqué' : 'autorisé' }}
               </span>
             </div>
             <div>
@@ -149,7 +154,12 @@
               style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:4px;background:var(--surface2);font-size:12px;cursor:pointer"
               @click="result = h"
             >
-              <span>{{ h.blocked ? '🚫' : '✅' }}</span>
+              <svg v-if="h.blocked" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
               <span style="font-family:monospace;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                 {{ h.url }}
               </span>
