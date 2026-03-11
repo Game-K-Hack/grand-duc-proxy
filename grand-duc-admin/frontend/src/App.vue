@@ -72,6 +72,14 @@
 
           <div class="nav-section" style="margin-top:8px">Administration</div>
 
+          <router-link class="nav-item" :class="{ active: $route.name === 'TlsBypass' }" to="/tls-bypass">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M4.93 4.93l14.14 14.14"/>
+            </svg>
+            Exceptions proxy
+          </router-link>
+
           <router-link class="nav-item" :class="{ active: $route.name === 'Users' }" to="/users">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="8" r="4"/>

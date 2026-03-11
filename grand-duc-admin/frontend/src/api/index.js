@@ -63,6 +63,13 @@ export const groupsApi = {
   deleteRule: (id, ruleId)   => api.delete(`/client-groups/${id}/rules/${ruleId}`),
 }
 
+// ── TLS Bypass ────────────────────────────────────────────────────────────────
+export const tlsBypassApi = {
+  list:   ()     => api.get('/tls-bypass'),
+  create: (body) => api.post('/tls-bypass', body),
+  delete: (id)   => api.delete(`/tls-bypass/${id}`),
+}
+
 // ── Utilisateurs clients (IP) ─────────────────────────────────────────────────
 export const clientUsersApi = {
   list:       ()             => api.get('/client-users'),

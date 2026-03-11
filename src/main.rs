@@ -100,6 +100,8 @@ pub struct ClientCache {
     pub default_group_id:   Option<i64>,
     /// rule_ids actifs dans le groupe par défaut
     pub default_group_rules: HashSet<i64>,
+    /// Hôtes exemptés du filtrage (trafic toujours autorisé, sous-domaines inclus)
+    pub tls_bypass:          HashSet<String>,
 }
 
 // ── Ligne brute lue depuis PostgreSQL ────────────────────────────────────────
@@ -133,6 +135,11 @@ struct GroupRuleRow {
 #[derive(sqlx::FromRow)]
 struct DefaultGroupRow {
     id: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct TlsBypassRow {
+    host: String,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,9 +261,21 @@ impl AppState {
             }
         }
 
-        let count = cache.ip_to_user_id.len();
+        // 5. Hôtes bypass (non filtrés)
+        let bypass_rows = sqlx::query_as::<_, TlsBypassRow>(
+            "SELECT host FROM tls_bypass"
+        )
+        .fetch_all(&self.db_pool)
+        .await?;
+
+        for r in bypass_rows {
+            cache.tls_bypass.insert(r.host);
+        }
+
+        let ip_count     = cache.ip_to_user_id.len();
+        let bypass_count = cache.tls_bypass.len();
         *self.client_cache.write().await = cache;
-        info!("Cache clients rafraîchi — {} IP enregistrées", count);
+        info!("Cache clients rafraîchi — {} IP enregistrées, {} hôtes bypass", ip_count, bypass_count);
         Ok(())
     }
 
@@ -363,6 +382,14 @@ impl AppState {
         false
     }
 
+    // ── Bypass ───────────────────────────────────────────────────────────────
+
+    /// Retourne `true` si l'hôte est exempté du filtrage (configuré en DB).
+    pub async fn is_bypass_host(&self, host: &str) -> bool {
+        let clients = self.client_cache.read().await;
+        clients.tls_bypass.iter().any(|e| host_matches_entry(host, e))
+    }
+
     // ── Logging async ────────────────────────────────────────────────────────
 
     /// Enregistre un accès en base de façon asynchrone (fire-and-forget).
@@ -413,19 +440,8 @@ impl ProxyHandler {
     }
 }
 
-// Liste des hôtes à ne pas intercepter (certificate pinning connu)
-const TLS_BYPASS: &[&str] = &[
-    "mobile.events.data.microsoft.com",
-    "events.data.microsoft.com",
-    "settings-win.data.microsoft.com",
-    "watson.telemetry.microsoft.com",
-    "ocsp.digicert.com",
-    "ocsp.pki.goog",
-    "ocsp2.globalsign.com",
-];
-
-fn is_pinned_host(host: &str) -> bool {
-    TLS_BYPASS.iter().any(|&h| host == h || host.ends_with(&format!(".{}", h)))
+fn host_matches_entry(host: &str, entry: &str) -> bool {
+    host == entry || host.ends_with(&format!(".{}", entry))
 }
 
 #[async_trait]
@@ -469,9 +485,9 @@ impl HttpHandler for ProxyHandler {
         // Le CONNECT est loggé en DB pour permettre de voir tout le trafic
         // (notamment les apps qui échouent au niveau TLS sans générer de HTTP).
         if method == "CONNECT" {
-            let pinned = is_pinned_host(&host);
-            if pinned {
-                info!("BYPASS   [CONNECT] {}  (certificate pinning)", req.uri());
+            let bypass = self.state.is_bypass_host(&host).await;
+            if bypass {
+                info!("BYPASS   [CONNECT] {}", req.uri());
             } else {
                 info!("TUNNEL   [CONNECT] {}", req.uri());
             }
@@ -496,7 +512,16 @@ impl HttpHandler for ProxyHandler {
             req.uri().to_string()
         };
 
-        // ── 4. Filtrage ───────────────────────────────────────────────────
+        // ── 4. Bypass hôte (trafic non filtré) ───────────────────────────
+        if self.state.is_bypass_host(&host).await {
+            info!("BYPASS   [{method}] {effective_url}");
+            self.state.log_access_background(
+                client_ip, effective_url, method, false, user_agent,
+            );
+            return RequestOrResponse::Request(req);
+        }
+
+        // ── 5. Filtrage ───────────────────────────────────────────────────
         if self.state.is_blocked(&client_ip, &effective_url).await {
             warn!("BLOQUÉ   [{method}] {effective_url}");
             self.state.log_access_background(
@@ -505,7 +530,7 @@ impl HttpHandler for ProxyHandler {
             return RequestOrResponse::Response(build_blocked_response(&effective_url));
         }
 
-        // ── 5. Trafic autorisé ────────────────────────────────────────────
+        // ── 6. Trafic autorisé ────────────────────────────────────────────
         info!("AUTORISÉ [{method}] {effective_url}");
         self.state.log_access_background(
             client_ip, effective_url, method, false, user_agent,

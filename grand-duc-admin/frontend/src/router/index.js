@@ -10,6 +10,7 @@ const routes = [
   { path: '/client-users',  name: 'ClientUsers',  component: () => import('@/views/ClientUsers.vue'),  meta: { admin: true } },
   { path: '/test-access',   name: 'TestAccess',   component: () => import('@/views/TestAccess.vue'),   meta: { admin: true } },
   { path: '/users',         name: 'Users',        component: () => import('@/views/Users.vue'),        meta: { admin: true } },
+  { path: '/tls-bypass',   name: 'TlsBypass',    component: () => import('@/views/TlsBypass.vue'),    meta: { admin: true } },
   { path: '/documentation',  name: 'Documentation', component: () => import('@/views/Documentation.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]

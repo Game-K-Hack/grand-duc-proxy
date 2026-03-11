@@ -74,3 +74,12 @@ class GroupRule(Base):
     rule_id:   Mapped[int]      = mapped_column(BigInteger, ForeignKey("filter_rules.id",  ondelete="CASCADE"), nullable=False)
     action:    Mapped[str]      = mapped_column(String(10), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TlsBypass(Base):
+    """Hôtes exemptés du filtrage proxy (sous-domaines inclus)."""
+    __tablename__ = "tls_bypass"
+    id:          Mapped[int]        = mapped_column(BigInteger, primary_key=True)
+    host:        Mapped[str]        = mapped_column(Text, unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at:  Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
