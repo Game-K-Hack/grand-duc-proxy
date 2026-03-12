@@ -40,6 +40,12 @@
           <div class="stat-label">Règles actives</div>
           <div class="stat-value accent">{{ stats.active_rules }}</div>
         </div>
+        <div class="stat-card" :style="stats.killswitch ? 'border-color:var(--red)' : ''">
+          <div class="stat-label">Killswitch</div>
+          <div class="stat-value" :class="stats.killswitch ? 'red' : 'green'">
+            {{ stats.killswitch ? 'ACTIF' : 'Inactif' }}
+          </div>
+        </div>
       </div>
 
       <!-- ── Graphique trafic ──────────────────────────────────────────── -->

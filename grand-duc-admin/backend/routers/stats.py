@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import Literal
 
 from database import get_db
-from models   import AccessLog, FilterRule
+from models   import AccessLog, AppSetting, FilterRule
 from security import require_permission
 from models   import User
 
@@ -107,6 +107,7 @@ class StatsResponse(BaseModel):
     top_domains:       list[TopDomain]
     requests_today:    int
     block_rate:        float          # 0.0 – 100.0
+    killswitch:        bool
 
 
 @router.get("", response_model=StatsResponse)
@@ -155,6 +156,9 @@ async def get_stats(
 
     block_rate = round((blocked / total * 100) if total > 0 else 0.0, 1)
 
+    ks_row = await db.get(AppSetting, "killswitch")
+    killswitch_active = ks_row.value == "true" if ks_row else False
+
     return StatsResponse(
         total_requests=total,
         blocked_requests=blocked,
@@ -164,4 +168,5 @@ async def get_stats(
         top_domains=[TopDomain(host=r.host, count=r.count, blocked=r.blocked or 0) for r in top_domains_rows],
         requests_today=requests_today,
         block_rate=block_rate,
+        killswitch=killswitch_active,
     )
