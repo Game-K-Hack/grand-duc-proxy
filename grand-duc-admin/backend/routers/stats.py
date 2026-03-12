@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, text, cast, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Literal
 
 from database import get_db
-from models   import AccessLog, AppSetting, FilterRule
+from models   import AccessLog, AppSetting, FilterRule, ClientUser
 from security import require_permission
 from models   import User
 
@@ -18,10 +18,17 @@ class TopDomain(BaseModel):
     blocked: int
 
 
+class TopClient(BaseModel):
+    ip:      str
+    label:   str | None
+    total:   int
+    blocked: int
+
+
 # ── Trafic réseau ─────────────────────────────────────────────────────────────
 
 class TrafficPoint(BaseModel):
-    label:   str   # heure ou minute selon le mode
+    label:   str
     total:   int
     blocked: int
     allowed: int
@@ -29,7 +36,7 @@ class TrafficPoint(BaseModel):
 
 class TrafficResponse(BaseModel):
     points: list[TrafficPoint]
-    mode:   str   # "24h" | "1h"
+    mode:   str
 
 
 @router.get("/traffic", response_model=TrafficResponse)
@@ -38,14 +45,7 @@ async def get_traffic(
     db:    AsyncSession = Depends(get_db),
     _user: User = Depends(require_permission("dashboard.read")),
 ):
-    """
-    Retourne les données de trafic agrégées :
-    - mode=24h : 24 points, un par heure sur les dernières 24h
-    - mode=1h  : 60 points, un par minute sur la dernière heure
-    """
     if mode == "24h":
-        # Agrégation par heure — génère une série complète même si certaines
-        # heures ont 0 requêtes (via generate_series)
         sql = text("""
             WITH hours AS (
                 SELECT generate_series(
@@ -65,7 +65,6 @@ async def get_traffic(
             ORDER BY h.slot ASC
         """)
     else:
-        # Agrégation par minute sur la dernière heure
         sql = text("""
             WITH minutes AS (
                 SELECT generate_series(
@@ -99,15 +98,22 @@ async def get_traffic(
 
 
 class StatsResponse(BaseModel):
-    total_requests:    int
-    blocked_requests:  int
-    allowed_requests:  int
-    active_rules:      int
-    top_blocked:       list[TopDomain]
-    top_domains:       list[TopDomain]
-    requests_today:    int
-    block_rate:        float          # 0.0 – 100.0
-    killswitch:        bool
+    # Aujourd'hui
+    requests_today:     int
+    blocked_today:      int
+    allowed_today:      int
+    block_rate_today:   float
+    active_clients:     int
+    # Hier (comparaison)
+    requests_yesterday: int
+    blocked_yesterday:  int
+    # Contexte
+    active_rules:       int
+    killswitch:         bool
+    # Top listes (aujourd'hui)
+    top_blocked:        list[TopDomain]
+    top_domains:        list[TopDomain]
+    top_clients:        list[TopClient]
 
 
 @router.get("", response_model=StatsResponse)
@@ -115,58 +121,97 @@ async def get_stats(
     db:    AsyncSession = Depends(get_db),
     _user: User = Depends(require_permission("dashboard.read")),
 ):
-    # Combiné : totaux + bloqués + aujourd'hui en 1 requête (au lieu de 3)
+    # Aujourd'hui + hier en une seule requête
     counts_row = (await db.execute(
         select(
-            func.count().label("total"),
-            func.count().filter(AccessLog.blocked == True).label("blocked"),
             func.count().filter(
                 func.date(AccessLog.accessed_at) == func.current_date()
-            ).label("today"),
+            ).label("today_total"),
+            func.count().filter(
+                func.date(AccessLog.accessed_at) == func.current_date(),
+                AccessLog.blocked == True,
+            ).label("today_blocked"),
+            func.count(func.distinct(AccessLog.client_ip)).filter(
+                func.date(AccessLog.accessed_at) == func.current_date()
+            ).label("today_clients"),
+            func.count().filter(
+                func.date(AccessLog.accessed_at) == func.current_date() - 1
+            ).label("yesterday_total"),
+            func.count().filter(
+                func.date(AccessLog.accessed_at) == func.current_date() - 1,
+                AccessLog.blocked == True,
+            ).label("yesterday_blocked"),
         ).select_from(AccessLog)
     )).one()
-    total, blocked, requests_today = counts_row.total, counts_row.blocked, counts_row.today
-    allowed = total - blocked
+
+    today_total = counts_row.today_total
+    today_blocked = counts_row.today_blocked
+    today_allowed = today_total - today_blocked
+    active_clients = counts_row.today_clients
+    yesterday_total = counts_row.yesterday_total
+    yesterday_blocked = counts_row.yesterday_blocked
 
     # Règles actives
     active_rules = (await db.execute(
         select(func.count()).where(FilterRule.enabled == True)
     )).scalar_one()
 
-    # Top 10 domaines bloqués
+    # Top 10 domaines bloqués (aujourd'hui)
     top_blocked_rows = (await db.execute(
         select(AccessLog.host, func.count().label("count"))
-        .where(AccessLog.blocked == True)
-        .group_by(AccessLog.host)
-        .order_by(func.count().desc())
-        .limit(10)
-    )).all()
-
-    # Top 10 domaines toutes requêtes confondues
-    top_domains_rows = (await db.execute(
-        select(
-            AccessLog.host,
-            func.count().label("count"),
-            func.count().filter(AccessLog.blocked == True).label("blocked"),
+        .where(
+            AccessLog.blocked == True,
+            func.date(AccessLog.accessed_at) == func.current_date(),
         )
         .group_by(AccessLog.host)
         .order_by(func.count().desc())
         .limit(10)
     )).all()
 
-    block_rate = round((blocked / total * 100) if total > 0 else 0.0, 1)
+    # Top 10 domaines visités (aujourd'hui)
+    top_domains_rows = (await db.execute(
+        select(
+            AccessLog.host,
+            func.count().label("count"),
+            func.count().filter(AccessLog.blocked == True).label("blocked"),
+        )
+        .where(func.date(AccessLog.accessed_at) == func.current_date())
+        .group_by(AccessLog.host)
+        .order_by(func.count().desc())
+        .limit(10)
+    )).all()
+
+    # Top 10 clients actifs (aujourd'hui) avec label
+    top_clients_rows = (await db.execute(
+        select(
+            AccessLog.client_ip,
+            func.count().label("total"),
+            func.count().filter(AccessLog.blocked == True).label("blocked"),
+            ClientUser.label,
+        )
+        .outerjoin(ClientUser, AccessLog.client_ip == ClientUser.ip_address)
+        .where(func.date(AccessLog.accessed_at) == func.current_date())
+        .group_by(AccessLog.client_ip, ClientUser.label)
+        .order_by(func.count().desc())
+        .limit(10)
+    )).all()
+
+    block_rate = round((today_blocked / today_total * 100) if today_total > 0 else 0.0, 1)
 
     ks_row = await db.get(AppSetting, "killswitch")
     killswitch_active = ks_row.value == "true" if ks_row else False
 
     return StatsResponse(
-        total_requests=total,
-        blocked_requests=blocked,
-        allowed_requests=allowed,
+        requests_today=today_total,
+        blocked_today=today_blocked,
+        allowed_today=today_allowed,
+        block_rate_today=block_rate,
+        active_clients=active_clients,
+        requests_yesterday=yesterday_total,
+        blocked_yesterday=yesterday_blocked,
         active_rules=active_rules,
+        killswitch=killswitch_active,
         top_blocked=[TopDomain(host=r.host, count=r.count, blocked=r.count) for r in top_blocked_rows],
         top_domains=[TopDomain(host=r.host, count=r.count, blocked=r.blocked or 0) for r in top_domains_rows],
-        requests_today=requests_today,
-        block_rate=block_rate,
-        killswitch=killswitch_active,
+        top_clients=[TopClient(ip=r.client_ip or "?", label=r.label, total=r.total, blocked=r.blocked or 0) for r in top_clients_rows],
     )
