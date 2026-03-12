@@ -12,9 +12,7 @@
         <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Sommaire</div>
         <nav style="display:flex;flex-direction:column;gap:2px">
           <a v-for="s in sections" :key="s.id" :href="'#'+s.id"
-            style="font-size:13px;padding:5px 8px;border-radius:6px;color:var(--text-muted);text-decoration:none;transition:background .1s;display:flex;align-items:center;gap:7px"
-            @mouseover="e => e.currentTarget.style.background='var(--surface2)'"
-            @mouseout="e => e.currentTarget.style.background=''"
+            :class="['toc-link', { 'toc-active': activeSection === s.id }]"
           >
             <span class="nav-icon" v-html="s.icon"></span>
             {{ s.label }}
@@ -269,12 +267,238 @@
           </div>
         </section>
 
+        <!-- ── Exceptions TLS ──────────────────────────────────── -->
+        <section class="card" id="tls-bypass">
+          <h2 class="doc-title">Exceptions TLS</h2>
+          <p class="doc-p">Certains sites ou services ne fonctionnent pas correctement lorsque leur trafic HTTPS est intercepté (applications bancaires, VPN, logiciels avec certificat épinglé…). La page <strong>Exceptions</strong> permet de déclarer les hôtes qui ne doivent <strong>pas être filtrés</strong> par le proxy.</p>
+
+          <ul class="doc-list">
+            <li><strong>Hôte</strong> — le nom de domaine à exclure (ex : <code>discord.com</code>)</li>
+            <li><strong>Sous-domaines inclus</strong> — l'ajout de <code>discord.com</code> exclut aussi automatiquement <code>*.discord.com</code></li>
+            <li><strong>Rechargement</strong> — le proxy recharge cette liste toutes les 5 minutes</li>
+          </ul>
+
+          <div class="doc-info">
+            <strong>Quand ajouter une exception ?</strong> Quand un site fonctionne normalement sans le proxy mais affiche des erreurs de certificat ou refuse de se charger à travers le proxy.
+          </div>
+        </section>
+
+        <!-- ── Certificats CA ──────────────────────────────────── -->
+        <section class="card" id="certificates">
+          <h2 class="doc-title">Certificats CA</h2>
+          <p class="doc-p">Le proxy utilise une <strong>autorité de certification (CA) locale</strong> pour intercepter le trafic HTTPS. Le certificat CA doit être installé et approuvé sur chaque poste client.</p>
+
+          <h3 class="doc-subtitle">Opérations disponibles</h3>
+          <ul class="doc-list">
+            <li><strong>Générer</strong> — créer un nouveau certificat CA auto-signé (remplace l'ancien)</li>
+            <li><strong>Importer</strong> — uploader un certificat et sa clé privée existants (format PEM)</li>
+            <li><strong>Télécharger</strong> — récupérer le fichier <code>grand-duc-ca.crt</code> pour l'installer sur les postes</li>
+            <li><strong>Historique</strong> — consulter les précédents certificats générés ou importés</li>
+          </ul>
+
+          <div class="doc-warning">
+            <strong>Après un changement de certificat</strong>, tous les postes clients doivent installer le nouveau CA. L'ancien certificat ne sera plus reconnu et les navigateurs afficheront des erreurs de sécurité.
+          </div>
+
+          <h3 class="doc-subtitle">Installation du certificat sur les postes</h3>
+          <table class="doc-table">
+            <thead><tr><th>Système</th><th>Méthode</th></tr></thead>
+            <tbody>
+              <tr><td>Windows</td><td>Double-clic sur le fichier <code>.crt</code> → Installer → Magasin « Autorités de certification racines de confiance »</td></tr>
+              <tr><td>macOS</td><td>Double-clic → Trousseaux d'accès → Marquer comme « Toujours approuver »</td></tr>
+              <tr><td>Linux / Firefox</td><td>Paramètres Firefox → Certificats → Importer → Cocher « Identifier les sites web »</td></tr>
+              <tr><td>GPO (déploiement en masse)</td><td>Configuration ordinateur → Stratégies → Paramètres Windows → Sécurité → Autorités racines de confiance</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- ── Killswitch ──────────────────────────────────────── -->
+        <section class="card" id="killswitch">
+          <h2 class="doc-title">Killswitch</h2>
+          <p class="doc-p">Le killswitch est un <strong>interrupteur d'urgence</strong> qui désactive instantanément tout le filtrage du proxy. Quand il est activé, toutes les requêtes sont autorisées sans vérification des règles.</p>
+
+          <ul class="doc-list">
+            <li><strong>Activation</strong> — nécessite une confirmation par mot de passe administrateur</li>
+            <li><strong>Désactivation</strong> — rétablit immédiatement le filtrage normal</li>
+            <li><strong>Historique</strong> — chaque activation/désactivation est enregistrée avec la date, l'heure et l'utilisateur</li>
+          </ul>
+
+          <div class="doc-warning">
+            <strong>Usage</strong> : le killswitch est prévu pour les situations d'urgence (ex : un blocage empêche l'accès à un outil critique). Il ne doit pas être utilisé comme méthode de gestion courante.
+          </div>
+        </section>
+
+        <!-- ── Contrôle du proxy ───────────────────────────────── -->
+        <section class="card" id="proxy-control">
+          <h2 class="doc-title">Contrôle du proxy</h2>
+          <p class="doc-p">La page <strong>Logs proxy</strong> affiche en temps réel le flux de sortie du processus proxy (connexion SSE). Elle permet de diagnostiquer les problèmes de connectivité ou de configuration.</p>
+
+          <h3 class="doc-subtitle">Fonctionnalités</h3>
+          <ul class="doc-list">
+            <li><strong>Logs en direct</strong> — flux continu des événements du proxy (connexions, blocages, erreurs)</li>
+            <li><strong>Statut</strong> — état actuel du processus proxy (en cours, arrêté, PID)</li>
+            <li><strong>Redémarrage</strong> — arrêter puis relancer le processus proxy. Utile après un changement de certificat CA ou de configuration réseau</li>
+          </ul>
+
+          <div class="doc-info">
+            <strong>Quand redémarrer ?</strong> Après l'import ou la génération d'un nouveau certificat CA, ou si le proxy ne répond plus. Les changements de règles et d'exceptions TLS sont rechargés automatiquement (pas besoin de redémarrer).
+          </div>
+        </section>
+
+        <!-- ── Comptes et rôles ────────────────────────────────── -->
+        <section class="card" id="accounts">
+          <h2 class="doc-title">Comptes et rôles</h2>
+          <p class="doc-p">L'interface d'administration est protégée par un système de <strong>comptes avec rôles et permissions granulaires</strong>. Chaque compte est associé à un rôle qui détermine précisément les pages et actions accessibles.</p>
+
+          <h3 class="doc-subtitle">Rôles prédéfinis</h3>
+          <table class="doc-table">
+            <thead><tr><th>Rôle</th><th>Type</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>Administrateur</strong></td>
+                <td><span class="badge badge-on" style="font-size:10px">Système</span></td>
+                <td>Accès complet à toutes les fonctionnalités. Ce rôle ne peut être ni supprimé, ni modifié.</td>
+              </tr>
+              <tr>
+                <td><strong>Lecteur</strong></td>
+                <td><span class="badge badge-on" style="font-size:10px">Système</span></td>
+                <td>Consultation en lecture seule de toutes les pages. Aucune possibilité de créer, modifier ou supprimer quoi que ce soit.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3 class="doc-subtitle">Rôles personnalisés</h3>
+          <p class="doc-p">Depuis la page <strong>Rôles</strong>, vous pouvez créer des rôles sur mesure en combinant les permissions par section :</p>
+
+          <table class="doc-table">
+            <thead><tr><th>Section</th><th>Permissions disponibles</th></tr></thead>
+            <tbody>
+              <tr><td>Monitoring</td><td>Tableau de bord, Journaux d'accès, Logs proxy</td></tr>
+              <tr><td>Filtrage</td><td>Règles (lecture/écriture), Groupes, Utilisateurs clients, Test d'accès</td></tr>
+              <tr><td>Administration</td><td>Exceptions TLS, Certificats CA, Killswitch, Comptes, Rôles, Contrôle proxy</td></tr>
+              <tr><td>Paramètres</td><td>Configuration SMTP, Intégrations RMM</td></tr>
+            </tbody>
+          </table>
+
+          <p class="doc-p">Chaque fonctionnalité propose typiquement deux niveaux de permission :</p>
+          <ul class="doc-list">
+            <li><strong>Lecture</strong> — voir la page et ses données</li>
+            <li><strong>Écriture</strong> — créer, modifier, supprimer des éléments</li>
+          </ul>
+
+          <div class="doc-info">
+            <strong>Visibilité de la sidebar :</strong> les liens de navigation ne s'affichent que si l'utilisateur a la permission de lecture correspondante. Une tentative d'accès direct par URL est redirigée vers le tableau de bord.
+          </div>
+
+          <div class="doc-warning">
+            <strong>Protection anti-lockout :</strong> le rôle Administrateur ne peut pas être supprimé ou privé de permissions. Au moins un compte doit toujours avoir ce rôle pour éviter de perdre l'accès à l'interface.
+          </div>
+        </section>
+
+        <!-- ── Notifications ───────────────────────────────────── -->
+        <section class="card" id="notifications">
+          <h2 class="doc-title">Notifications par email</h2>
+          <p class="doc-p">Grand-Duc peut envoyer des alertes par email lors d'événements importants. La configuration se fait en deux étapes : <strong>configurer le serveur SMTP</strong>, puis <strong>choisir ses alertes personnelles</strong>.</p>
+
+          <h3 class="doc-subtitle">1. Configuration SMTP</h3>
+          <p class="doc-p">Accessible depuis <strong>Paramètres → Configuration SMTP</strong> (nécessite la permission correspondante). Renseignez les informations de votre serveur de messagerie :</p>
+          <ul class="doc-list">
+            <li><strong>Serveur / Port</strong> — adresse et port du serveur SMTP (ex : <code>smtp.gmail.com:587</code>)</li>
+            <li><strong>Identifiants</strong> — nom d'utilisateur et mot de passe du compte d'envoi</li>
+            <li><strong>Adresse expéditeur</strong> — le champ « From » des emails envoyés</li>
+            <li><strong>STARTTLS</strong> — activer le chiffrement (recommandé)</li>
+          </ul>
+          <div class="doc-info">
+            Utilisez le bouton <strong>Tester</strong> pour envoyer un email de vérification à une adresse de votre choix avant de valider la configuration.
+          </div>
+
+          <h3 class="doc-subtitle">2. Préférences personnelles</h3>
+          <p class="doc-p">Chaque utilisateur configure ses propres alertes depuis <strong>Paramètres → Mes notifications</strong> (aucune permission spéciale requise). Événements disponibles :</p>
+
+          <table class="doc-table">
+            <thead><tr><th>Événement</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>Certificat CA</td><td>Génération ou import d'un nouveau certificat</td></tr>
+              <tr><td>Redémarrage proxy</td><td>Redémarrage du proxy via l'interface</td></tr>
+              <tr><td>Killswitch</td><td>Activation ou désactivation du killswitch</td></tr>
+              <tr><td>Nouveau compte</td><td>Création d'un compte administrateur</td></tr>
+              <tr><td>Règle déclenchée</td><td>Une règle surveillée est déclenchée (vérification toutes les 5 min)</td></tr>
+              <tr><td>Erreur sync RMM</td><td>Échec d'une synchronisation avec un RMM</td></tr>
+            </tbody>
+          </table>
+
+          <h3 class="doc-subtitle">3. Surveillance de règles</h3>
+          <p class="doc-p">Dans la section <strong>Règles à surveiller</strong>, vous pouvez sélectionner des règles de filtrage individuelles. Si une de ces règles est déclenchée dans les journaux d'accès, vous recevez un email d'alerte.</p>
+          <div class="doc-warning">
+            La surveillance de règles nécessite d'activer l'événement « Règle de filtrage déclenchée » dans les préférences ci-dessus. Le compte doit aussi avoir une adresse email configurée.
+          </div>
+        </section>
+
+        <!-- ── Intégrations RMM ────────────────────────────────── -->
+        <section class="card" id="rmm">
+          <h2 class="doc-title">Intégrations RMM</h2>
+          <p class="doc-p">Grand-Duc peut se synchroniser avec vos outils de gestion de parc (RMM) pour importer automatiquement les postes clients et leurs adresses IP.</p>
+
+          <h3 class="doc-subtitle">Plateformes supportées</h3>
+          <table class="doc-table">
+            <thead><tr><th>RMM</th><th>Authentification</th><th>Données importées</th></tr></thead>
+            <tbody>
+              <tr><td>Tactical RMM</td><td>Clé API</td><td>Nom de l'agent, IP interne</td></tr>
+              <tr><td>NinjaRMM</td><td>Client ID + Client Secret (OAuth2)</td><td>Nom du device, IP</td></tr>
+              <tr><td>Datto RMM</td><td>Clé API + Secret API</td><td>Nom du device, IP</td></tr>
+              <tr><td>Atera</td><td>Clé API</td><td>Nom de la machine, IP</td></tr>
+            </tbody>
+          </table>
+
+          <h3 class="doc-subtitle">Configuration</h3>
+          <ul class="doc-list">
+            <li><strong>URL de base</strong> — l'adresse de votre instance RMM (ex : <code>https://rmm.example.com</code>)</li>
+            <li><strong>Clé / Secret API</strong> — identifiants générés depuis votre plateforme RMM</li>
+            <li><strong>Intervalle de sync</strong> — fréquence de synchronisation automatique (5 à 1440 minutes)</li>
+            <li><strong>Activer/Désactiver</strong> — la synchronisation automatique peut être coupée sans supprimer l'intégration</li>
+          </ul>
+
+          <div class="doc-info">
+            <strong>Synchronisation manuelle :</strong> utilisez le bouton <strong>Sync</strong> pour déclencher immédiatement une synchronisation et voir le résultat (postes créés, mis à jour, ignorés).
+          </div>
+
+          <div class="doc-info">
+            Les postes importés depuis un RMM sont créés comme <strong>utilisateurs clients</strong> classiques. Ils peuvent ensuite être ajoutés à des groupes comme tout autre utilisateur.
+          </div>
+        </section>
+
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+
+const activeSection = ref('overview')
+let observer = null
+
+onMounted(() => {
+  observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          activeSection.value = entry.target.id
+        }
+      }
+    },
+    { rootMargin: '-10% 0px -80% 0px' }
+  )
+  sections.forEach(s => {
+    const el = document.getElementById(s.id)
+    if (el) observer.observe(el)
+  })
+})
+
+onUnmounted(() => {
+  if (observer) observer.disconnect()
+})
+
 const sections = [
   {
     id: 'overview', label: "Vue d'ensemble",
@@ -308,10 +532,60 @@ const sections = [
     id: 'users', label: 'Utilisateurs clients',
     icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
   },
+  {
+    id: 'tls-bypass', label: 'Exceptions TLS',
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M4.93 4.93l14.14 14.14"/></svg>`,
+  },
+  {
+    id: 'certificates', label: 'Certificats CA',
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+  },
+  {
+    id: 'killswitch', label: 'Killswitch',
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>`,
+  },
+  {
+    id: 'proxy-control', label: 'Contrôle proxy',
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
+  },
+  {
+    id: 'accounts', label: 'Comptes et rôles',
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>`,
+  },
+  {
+    id: 'notifications', label: 'Notifications',
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
+  },
+  {
+    id: 'rmm', label: 'Intégrations RMM',
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
+  },
 ]
 </script>
 
 <style scoped>
+.toc-link {
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: background .15s, color .15s;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.toc-link:hover {
+  background: var(--surface2);
+}
+.toc-active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+.toc-active:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 .doc-title {
   font-size: 18px;
   font-weight: 700;
