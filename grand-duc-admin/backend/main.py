@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import engine, Base
 from config   import settings
-from routers  import auth, rules, logs, stats, users, client_groups, client_users, tls_bypass, killswitch, certificates, proxy_control
+from routers  import auth, rules, logs, stats, users, client_groups, client_users, tls_bypass, killswitch, certificates, proxy_control, integrations
 
 
 @asynccontextmanager
@@ -15,7 +15,9 @@ async def lifespan(app: FastAPI):
     # Crée les tables si absentes (utile en dev)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    integrations.start_sync_loop()
     yield
+    integrations.stop_sync_loop()
     await engine.dispose()
 
 
@@ -43,6 +45,7 @@ app.include_router(client_users.router,  prefix="/api/client-users",  tags=["Uti
 app.include_router(tls_bypass.router,    prefix="/api/tls-bypass",    tags=["TLS Bypass"])
 app.include_router(killswitch.router,    prefix="/api/killswitch",    tags=["Killswitch"])
 app.include_router(certificates.router,   prefix="/api/certificates",  tags=["Certificats"])
-app.include_router(proxy_control.router, prefix="/api/proxy",         tags=["Proxy"])
+app.include_router(proxy_control.router,  prefix="/api/proxy",         tags=["Proxy"])
+app.include_router(integrations.router,  prefix="/api/integrations",  tags=["Intégrations RMM"])
 
 # uvicorn main:app --reload --port 8000

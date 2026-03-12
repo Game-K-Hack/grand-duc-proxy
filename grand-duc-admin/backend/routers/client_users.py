@@ -17,10 +17,14 @@ router = APIRouter()
 class ClientUserIn(BaseModel):
     ip_address: str
     label:      Optional[str] = None
+    hostname:   Optional[str] = None
+    os:         Optional[str] = None
 
 
 class ClientUserUpdate(BaseModel):
-    label: Optional[str] = None
+    label:    Optional[str] = None
+    hostname: Optional[str] = None
+    os:       Optional[str] = None
 
 
 class GroupBrief(BaseModel):
@@ -29,11 +33,16 @@ class GroupBrief(BaseModel):
 
 
 class ClientUserOut(BaseModel):
-    id:         int
-    ip_address: str
-    label:      Optional[str]
-    groups:     list[GroupBrief]
-    created_at: str
+    id:                 int
+    ip_address:         str
+    label:              Optional[str]
+    hostname:           Optional[str]
+    os:                 Optional[str]
+    source:             str
+    last_seen_rmm:      Optional[str]
+    rmm_integration_id: Optional[int]
+    groups:             list[GroupBrief]
+    created_at:         str
 
 
 class SetGroupsIn(BaseModel):
@@ -62,6 +71,9 @@ async def fetch_user_groups(db, user_id: int) -> list[GroupBrief]:
 async def build_user_out(db, u: ClientUser) -> ClientUserOut:
     return ClientUserOut(
         id=u.id, ip_address=u.ip_address, label=u.label,
+        hostname=u.hostname, os=u.os, source=u.source,
+        last_seen_rmm=u.last_seen_rmm.isoformat() if u.last_seen_rmm else None,
+        rmm_integration_id=u.rmm_integration_id,
         groups=await fetch_user_groups(db, u.id),
         created_at=u.created_at.isoformat(),
     )
@@ -88,7 +100,7 @@ async def create_client_user(
 ):
     if (await db.execute(select(ClientUser).where(ClientUser.ip_address == body.ip_address))).scalar_one_or_none():
         raise HTTPException(409, "Cette adresse IP est déjà enregistrée")
-    u = ClientUser(ip_address=body.ip_address, label=body.label)
+    u = ClientUser(ip_address=body.ip_address, label=body.label, hostname=body.hostname, os=body.os)
     db.add(u)
     await db.commit()
     await db.refresh(u)
@@ -102,7 +114,9 @@ async def update_client_user(
     _user: User = Depends(require_admin),
 ):
     u = await get_user_or_404(db, user_id)
-    u.label = body.label
+    if body.label    is not None: u.label    = body.label
+    if body.hostname is not None: u.hostname = body.hostname
+    if body.os       is not None: u.os       = body.os
     await db.commit()
     await db.refresh(u)
     return await build_user_out(db, u)

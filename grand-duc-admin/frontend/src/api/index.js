@@ -99,6 +99,15 @@ export const tlsBypassApi = {
   delete: (id)   => api.delete(`/tls-bypass/${id}`),
 }
 
+// ── Intégrations RMM ─────────────────────────────────────────────────────────
+export const integrationsApi = {
+  list:   ()          => api.get('/integrations'),
+  create: (body)      => api.post('/integrations', body),
+  update: (id, body)  => api.put(`/integrations/${id}`, body),
+  delete: (id)        => api.delete(`/integrations/${id}`),
+  sync:   (id)        => api.post(`/integrations/${id}/sync`),
+}
+
 // ── Utilisateurs clients (IP) ─────────────────────────────────────────────────
 export const clientUsersApi = {
   list:       ()             => api.get('/client-users'),

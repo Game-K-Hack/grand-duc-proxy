@@ -105,6 +105,15 @@
             Killswitch
           </router-link>
 
+          <router-link class="nav-item" :class="{ active: $route.name === 'Integrations' }" to="/integrations">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/>
+              <rect x="2" y="14" width="8" height="8" rx="1"/>
+              <path d="M18 14v4M20 16h-4M14 18h-4"/>
+            </svg>
+            Intégrations RMM
+          </router-link>
+
           <router-link class="nav-item" :class="{ active: $route.name === 'Users' }" to="/users">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="8" r="4"/>

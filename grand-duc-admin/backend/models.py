@@ -51,12 +51,34 @@ class ClientGroup(Base):
     created_at:  Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class RmmIntegration(Base):
+    """Intégration RMM externe (Tactical RMM, NinjaRMM, Datto, Atera…)."""
+    __tablename__ = "rmm_integrations"
+    id:                    Mapped[int]         = mapped_column(BigInteger, primary_key=True)
+    name:                  Mapped[str]         = mapped_column(Text, nullable=False)
+    type:                  Mapped[str]         = mapped_column(String(30), nullable=False)
+    url:                   Mapped[str]         = mapped_column(Text, nullable=False)
+    api_key:               Mapped[str]         = mapped_column(Text, nullable=False)
+    api_secret:            Mapped[str | None]  = mapped_column(Text)
+    enabled:               Mapped[bool]        = mapped_column(Boolean, default=True)
+    sync_interval_minutes: Mapped[int]         = mapped_column(Integer, default=60)
+    last_sync_at:          Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sync_status:      Mapped[str | None]  = mapped_column(Text)
+    created_at:            Mapped[datetime]    = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ClientUser(Base):
     __tablename__ = "client_users"
-    id:         Mapped[int]        = mapped_column(BigInteger, primary_key=True)
-    ip_address: Mapped[str]        = mapped_column(Text, unique=True, nullable=False)
-    label:      Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
+    id:                  Mapped[int]         = mapped_column(BigInteger, primary_key=True)
+    ip_address:          Mapped[str]         = mapped_column(Text, unique=True, nullable=False)
+    label:               Mapped[str | None]  = mapped_column(Text)
+    hostname:            Mapped[str | None]  = mapped_column(Text)
+    os:                  Mapped[str | None]  = mapped_column(Text)
+    source:              Mapped[str]         = mapped_column(String(20), default='manual')
+    rmm_agent_id:        Mapped[str | None]  = mapped_column(Text)
+    last_seen_rmm:       Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rmm_integration_id:  Mapped[int | None]  = mapped_column(BigInteger, ForeignKey("rmm_integrations.id", ondelete="SET NULL"))
+    created_at:          Mapped[datetime]    = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ClientUserGroups(Base):
