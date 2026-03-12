@@ -31,6 +31,10 @@ export const useAuthStore = defineStore('auth', {
         this.token = data.access_token
         localStorage.setItem('token', data.access_token)
         await this.fetchMe()
+        // Charger le theme de l'utilisateur
+        import('@/composables/useTheme').then(({ useTheme }) => {
+          useTheme().loadFromServer()
+        })
       } catch (e) {
         this.error = e.response?.data?.detail || 'Erreur de connexion'
         throw e
@@ -44,6 +48,9 @@ export const useAuthStore = defineStore('auth', {
       if (this._fetchPromise) return this._fetchPromise
       this._fetchPromise = authApi.me().then(({ data }) => {
         this.user = data
+        import('@/composables/useTheme').then(({ useTheme }) => {
+          useTheme().loadFromServer()
+        })
       }).catch(() => {
         this.logout()
       }).finally(() => {

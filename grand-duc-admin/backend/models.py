@@ -43,6 +43,12 @@ class User(Base):
     created_at:      Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_login:      Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+class UserTheme(Base):
+    """Préférences de thème par utilisateur (table séparée pour éviter ALTER sur users)."""
+    __tablename__ = "user_themes"
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    theme:   Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+
 class Role(Base):
     __tablename__ = "roles"
     id:          Mapped[int]        = mapped_column(BigInteger, primary_key=True)

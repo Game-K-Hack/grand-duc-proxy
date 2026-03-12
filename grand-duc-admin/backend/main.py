@@ -79,8 +79,11 @@ async def _ensure_columns():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Crée les tables si absentes (utile en dev)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as exc:
+        logger.warning("create_all échoué (droits insuffisants ?). Erreur : %s", exc)
     await _ensure_columns()
     await _ensure_builtin_roles()
     integrations.start_sync_loop()

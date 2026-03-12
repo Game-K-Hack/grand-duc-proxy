@@ -186,7 +186,92 @@
     </div>
 
     <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <!-- Onglet 3 : Intégrations RMM (admin uniquement)                        -->
+    <!-- Onglet 3 : Apparence                                                  -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <div v-if="activeTab === 'appearance'">
+
+      <!-- Themes predefinis -->
+      <div style="margin-bottom:28px">
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px">Themes</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
+          Choisissez un theme predefini. Les couleurs s'appliquent immediatement.
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+          <div
+            v-for="preset in PRESETS" :key="preset.id"
+            class="theme-card"
+            :class="{ selected: theme.state.presetId === preset.id && !theme.state.customColors }"
+            @click="theme.selectPreset(preset.id)"
+          >
+            <!-- Preview barre -->
+            <div style="display:flex;gap:4px;margin-bottom:10px">
+              <div :style="`width:100%;height:32px;border-radius:4px;background:${preset.colors.bg};border:1px solid ${preset.colors.border};display:flex;align-items:center;padding:0 8px;gap:6px`">
+                <div :style="`width:8px;height:8px;border-radius:50%;background:${preset.colors.accent}`"></div>
+                <div :style="`flex:1;height:4px;border-radius:2px;background:${preset.colors.surface2}`"></div>
+              </div>
+            </div>
+            <!-- Couleurs preview -->
+            <div style="display:flex;gap:3px;margin-bottom:8px">
+              <div v-for="c in ['accent', 'green', 'blue', 'red', 'yellow']" :key="c"
+                :style="`width:16px;height:16px;border-radius:50%;background:${preset.colors[c]}`"
+              ></div>
+            </div>
+            <div style="font-size:13px;font-weight:600">{{ preset.name }}</div>
+            <div style="font-size:11px;color:var(--text-muted)">{{ preset.description }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Personnalisation des couleurs -->
+      <div class="card" style="max-width:680px;padding:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:15px;font-weight:700">Personnaliser les couleurs</div>
+          <div style="display:flex;gap:8px">
+            <button v-if="theme.state.customColors" class="btn btn-ghost btn-sm" @click="theme.resetCustom()">
+              Reinitialiser
+            </button>
+            <button v-if="theme.state.customColors" class="btn btn-primary btn-sm" @click="saveCustomColors" :disabled="themeSaving">
+              {{ themeSaving ? 'Enregistrement...' : 'Enregistrer' }}
+            </button>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">
+          Modifiez individuellement chaque couleur du theme actif. Cliquez sur un carre de couleur pour la changer.
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+          <div v-for="(label, key) in COLOR_LABELS" :key="key"
+            style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2)">
+            <label :for="'color-'+key" style="display:flex;align-items:center;cursor:pointer">
+              <input :id="'color-'+key" type="color"
+                :value="currentColors[key]"
+                @input="theme.setColor(key, $event.target.value)"
+                style="width:32px;height:32px;border:2px solid var(--border);border-radius:6px;cursor:pointer;padding:0;background:transparent"
+              />
+            </label>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:500">{{ label }}</div>
+              <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--text-muted)">
+                {{ currentColors[key] }}
+              </div>
+            </div>
+            <div v-if="theme.state.customColors?.[key]"
+              style="font-size:10px;padding:1px 6px;border-radius:4px;background:rgba(240,136,62,.15);color:var(--accent)">
+              modifie
+            </div>
+          </div>
+        </div>
+
+        <div v-if="themeSaved" style="margin-top:14px;font-size:12px;color:var(--green)">
+          Theme personnalise enregistre.
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- Onglet 4 : Intégrations RMM (admin uniquement)                        -->
     <!-- ══════════════════════════════════════════════════════════════════════ -->
     <div v-if="activeTab === 'rmm' && auth.hasPermission('settings.rmm.read')">
 
@@ -403,8 +488,10 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { settingsApi, integrationsApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
+import { useTheme, PRESETS, COLOR_LABELS } from '@/composables/useTheme'
 
 const auth = useAuthStore()
+const theme = useTheme()
 
 // ── Onglets ───────────────────────────────────────────────────────────────────
 const tabs = computed(() => {
@@ -412,6 +499,7 @@ const tabs = computed(() => {
   if (auth.hasPermission('settings.smtp.read')) {
     t.unshift({ key: 'smtp', label: 'Configuration SMTP' })
   }
+  t.push({ key: 'appearance', label: 'Apparence' })
   if (auth.hasPermission('settings.rmm.read')) {
     t.push({ key: 'rmm', label: 'Intégrations RMM' })
   }
@@ -518,6 +606,24 @@ async function removeRuleWatch(ruleId) {
   const newIds = [...watchedIds.value].filter(id => id !== ruleId)
   await settingsApi.setRuleWatches(newIds)
   await loadRules()
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Apparence
+// ══════════════════════════════════════════════════════════════════════════════
+const currentColors = computed(() => theme.activeColors())
+const themeSaving   = ref(false)
+const themeSaved    = ref(false)
+
+async function saveCustomColors() {
+  themeSaving.value = true
+  try {
+    await theme.saveCustom()
+    themeSaved.value = true
+    setTimeout(() => { themeSaved.value = false }, 3000)
+  } finally {
+    themeSaving.value = false
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -685,6 +791,7 @@ async function loadTab(tab) {
   loadedTabs.add(tab)
   if (tab === 'smtp')          return loadSmtp()
   if (tab === 'notifications') return Promise.all([loadPrefs(), loadRules()])
+  if (tab === 'appearance')    return                // theme deja charge globalement
   if (tab === 'rmm')           return loadIntegrations()
 }
 
@@ -718,6 +825,17 @@ onMounted(() => loadTab(activeTab.value))
 .badge-green  { background: rgba(46,160,67,.15); color: var(--green); }
 .badge-red    { background: rgba(248,81,73,.15);  color: var(--red); }
 .badge-muted  { background: rgba(139,148,158,.15); color: var(--text-muted); }
+
+.theme-card {
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color .15s, transform .1s;
+}
+.theme-card:hover { border-color: var(--text-muted); transform: translateY(-1px); }
+.theme-card.selected { border-color: var(--accent); background: var(--surface2); }
 
 .fade-enter-active, .fade-leave-active { transition: opacity .3s; }
 .fade-enter-from, .fade-leave-to       { opacity: 0; }

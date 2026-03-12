@@ -11,8 +11,10 @@ from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import json
+
 from database import get_db
-from models import AppSetting, FilterRule, NotificationPref, NotificationRuleWatch, User
+from models import AppSetting, FilterRule, NotificationPref, NotificationRuleWatch, User, UserTheme
 from security import get_current_user, require_permission
 from services.email import EVENT_LABELS, _get_smtp_config, _send_async, _html_template
 
@@ -239,4 +241,43 @@ async def set_my_rule_watches(
         db.add(NotificationRuleWatch(user_id=user.id, rule_id=rid))
 
     await db.commit()
+    return {"ok": True}
+
+
+# ── Thème utilisateur ─────────────────────────────────────────────────────────
+
+class ThemeIn(BaseModel):
+    theme: dict | None = None
+
+
+@router.get("/theme")
+async def get_my_theme(
+    db:   AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        row = await db.get(UserTheme, user.id)
+        return {"theme": json.loads(row.theme) if row else None}
+    except Exception:
+        return {"theme": None}
+
+
+@router.put("/theme")
+async def set_my_theme(
+    body: ThemeIn,
+    db:   AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        row = await db.get(UserTheme, user.id)
+        if body.theme:
+            if row:
+                row.theme = json.dumps(body.theme)
+            else:
+                db.add(UserTheme(user_id=user.id, theme=json.dumps(body.theme)))
+        elif row:
+            await db.delete(row)
+        await db.commit()
+    except Exception:
+        pass
     return {"ok": True}

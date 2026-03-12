@@ -155,11 +155,16 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useTheme } from '@/composables/useTheme'
 
 const auth   = useAuthStore()
 const router = useRouter()
+const theme  = useTheme()
 
-onMounted(() => auth.fetchMe())
+onMounted(() => {
+  theme.init()
+  auth.fetchMe()
+})
 
 async function logout() {
   auth.logout()

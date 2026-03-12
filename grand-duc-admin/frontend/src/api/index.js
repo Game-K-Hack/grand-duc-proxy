@@ -137,6 +137,8 @@ export const settingsApi = {
   getRuleWatches:   ()       => api.get('/settings/notifications/rules'),
   getAvailRules:    ()       => cachedGet('/settings/notifications/rules/available', 30_000),
   setRuleWatches:   (ids)    => { invalidateCache('/settings/notifications'); return api.put('/settings/notifications/rules', { rule_ids: ids }) },
+  getTheme:         ()       => api.get('/settings/theme'),
+  setTheme:         (theme)  => api.put('/settings/theme', { theme }),
 }
 
 // ── Intégrations RMM ─────────────────────────────────────────────────────────
