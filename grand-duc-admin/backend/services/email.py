@@ -8,12 +8,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import smtplib
-import re
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from sqlalchemy import select, update
+from sqlalchemy import func as sa_func, select, update
 
 from database import AsyncSessionLocal
 from models import AppSetting, AccessLog, FilterRule, NotificationPref, NotificationRuleWatch, User
@@ -155,43 +154,44 @@ async def check_rule_triggers():
             )).scalars().all()
         }
 
+        # ID max actuel des logs — le curseur avancera toujours jusqu'ici
+        current_max_id = (await db.execute(
+            select(sa_func.coalesce(sa_func.max(AccessLog.id), 0))
+        )).scalar()
+
         for watch in watches:
             rule = rules.get(watch.rule_id)
             if not rule:
                 continue
 
-            # Logs d'accès plus récents que le dernier notifié
-            new_logs = (await db.execute(
-                select(AccessLog)
-                .where(AccessLog.id > watch.last_notified_log_id)
-                .order_by(AccessLog.id)
-                .limit(50)
-            )).scalars().all()
-
-            if not new_logs:
+            if watch.last_notified_log_id >= current_max_id:
                 continue
 
-            # Vérifier les correspondances
-            matched = []
-            max_id = watch.last_notified_log_id
-            for log in new_logs:
-                max_id = max(max_id, log.id)
-                try:
-                    if re.search(rule.pattern, log.url, re.IGNORECASE):
-                        matched.append(log)
-                except re.error:
-                    pass
-
-            # Mettre à jour le curseur même sans match
-            if max_id > watch.last_notified_log_id:
-                await db.execute(
-                    update(NotificationRuleWatch)
+            # Filtrer directement en SQL avec le regex PostgreSQL (~*)
+            try:
+                matched = (await db.execute(
+                    select(AccessLog)
                     .where(
-                        NotificationRuleWatch.user_id == watch.user_id,
-                        NotificationRuleWatch.rule_id == watch.rule_id,
+                        AccessLog.id > watch.last_notified_log_id,
+                        AccessLog.id <= current_max_id,
+                        AccessLog.url.op("~*")(rule.pattern),
                     )
-                    .values(last_notified_log_id=max_id)
+                    .order_by(AccessLog.id)
+                    .limit(50)
+                )).scalars().all()
+            except Exception:
+                # Regex invalide en SQL — fallback silencieux
+                matched = []
+
+            # Toujours avancer le curseur au max actuel, même sans match
+            await db.execute(
+                update(NotificationRuleWatch)
+                .where(
+                    NotificationRuleWatch.user_id == watch.user_id,
+                    NotificationRuleWatch.rule_id == watch.rule_id,
                 )
+                .values(last_notified_log_id=current_max_id)
+            )
 
             if not matched:
                 continue
