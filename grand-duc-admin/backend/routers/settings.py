@@ -4,6 +4,9 @@ Paramètres globaux (SMTP) et préférences de notification par utilisateur.
 
 from __future__ import annotations
 
+import logging
+import os
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,6 +15,8 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import json
+
+logger = logging.getLogger(__name__)
 
 from database import get_db
 from models import AppSetting, FilterRule, NotificationPref, NotificationRuleWatch, User, UserTheme
@@ -214,6 +219,121 @@ async def preview_email_template(
         "&nbsp;&nbsp;• 14:33:01 — 10.0.0.15 → gateway.discord.gg",
     ]
     html = render_template(body.template, "Règle de filtrage déclenchée", sample_details)
+    return {"html": html}
+
+
+# ── Page de blocage ──────────────────────────────────────────────────────────
+
+def _block_page_disk_path() -> Path | None:
+    """Chemin du fichier index.html de la page de blocage sur disque."""
+    from config import settings as cfg
+    work_dir = getattr(cfg, "PROXY_WORK_DIR", None)
+    if not work_dir:
+        return None
+    return Path(work_dir) / "templates" / "blocked" / "index.html"
+
+
+def _read_default_block_page() -> str:
+    """Lit le template par défaut depuis le disque (source du projet)."""
+    # Chercher dans le répertoire du projet (2 niveaux au-dessus du backend)
+    candidates = [
+        Path(__file__).resolve().parents[3] / "templates" / "blocked" / "index.html",  # grand-duc/templates
+        _block_page_disk_path(),
+    ]
+    for path in candidates:
+        if path and path.is_file():
+            try:
+                return path.read_text(encoding="utf-8")
+            except Exception:
+                continue
+    return "<html><body><h1>Accès bloqué</h1><p>{{blocked_url}}</p></body></html>"
+
+
+def _write_block_page_to_disk(html: str):
+    """Écrit le template sur disque pour que le proxy Rust le lise."""
+    path = _block_page_disk_path()
+    if not path:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(html, encoding="utf-8")
+        logger.info("Page de blocage écrite sur disque : %s", path)
+    except Exception as exc:
+        logger.warning("Impossible d'écrire la page de blocage sur disque : %s", exc)
+
+
+class BlockPageOut(BaseModel):
+    template: str
+    is_custom: bool
+
+
+@router.get("/block-page", response_model=BlockPageOut)
+async def get_block_page(
+    db:    AsyncSession = Depends(get_db),
+    _user: User = Depends(require_permission("settings.smtp.read")),
+):
+    row = await db.get(AppSetting, "block_page_template")
+    if row:
+        return BlockPageOut(template=row.value, is_custom=True)
+    return BlockPageOut(template=_read_default_block_page(), is_custom=False)
+
+
+class BlockPageIn(BaseModel):
+    template: str
+
+
+@router.put("/block-page")
+async def set_block_page(
+    body:  BlockPageIn,
+    db:    AsyncSession = Depends(get_db),
+    _user: User = Depends(require_permission("settings.smtp.write")),
+):
+    row = await db.get(AppSetting, "block_page_template")
+    if row:
+        row.value = body.template
+    else:
+        db.add(AppSetting(key="block_page_template", value=body.template))
+    await db.commit()
+    _write_block_page_to_disk(body.template)
+    return {"ok": True}
+
+
+@router.delete("/block-page")
+async def reset_block_page(
+    db:    AsyncSession = Depends(get_db),
+    _user: User = Depends(require_permission("settings.smtp.write")),
+):
+    row = await db.get(AppSetting, "block_page_template")
+    if row:
+        await db.delete(row)
+        await db.commit()
+    # Restaurer le fichier par défaut sur disque
+    default_html = _read_default_block_page()
+    _write_block_page_to_disk(default_html)
+    return {"ok": True}
+
+
+@router.post("/block-page/preview")
+async def preview_block_page(
+    body:  BlockPageIn,
+    _user: User = Depends(require_permission("settings.smtp.read")),
+):
+    """Retourne le HTML avec une URL bloquée fictive injectée (comme le proxy)."""
+    sample_url = "https://discord.com/channels/example"
+    injection = (
+        '<base href="https://grand-duc.proxy/blocked/">'
+        f'<script>window.__BLOCKED_URL__ = "{sample_url}";</script>'
+    )
+    html = body.template
+    if "<head>" in html:
+        pos = html.index("<head>") + len("<head>")
+        html = html[:pos] + injection + html[pos:]
+    elif "<head " in html:
+        pos = html.index("<head ")
+        end = html.index(">", pos) + 1
+        html = html[:end] + injection + html[end:]
+    else:
+        html = injection + html
     return {"html": html}
 
 

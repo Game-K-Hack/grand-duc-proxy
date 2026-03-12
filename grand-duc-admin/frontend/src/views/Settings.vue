@@ -241,12 +241,86 @@
         </div>
         <!-- Prévisualisation -->
         <div style="display:flex;flex-direction:column">
-          <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text-muted)">Prévisualisation</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div style="font-size:12px;font-weight:600;color:var(--text-muted)">Prévisualisation</div>
+            <button class="btn-expand" @click="openPreviewTab(tplPreviewHtml)" title="Ouvrir dans un nouvel onglet">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+            </button>
+          </div>
           <div style="flex:1;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:#0d1117">
             <iframe
               :srcdoc="tplPreviewHtml"
               style="width:100%;height:100%;border:none;min-height:400px"
               sandbox="allow-same-origin"
+            ></iframe>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- Onglet : Page de blocage                                               -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <div v-if="activeTab === 'block_page' && auth.hasPermission('settings.smtp.read')">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:15px;font-weight:700;margin-bottom:2px">Page de blocage du proxy</div>
+          <div style="font-size:12px;color:var(--text-muted)">
+            Modifiez le HTML affiché lorsqu'un utilisateur tente d'accéder à un site bloqué.
+            La variable <code style="color:var(--blue)">window.__BLOCKED_URL__</code> contient l'URL bloquée (injectée par le proxy).
+          </div>
+        </div>
+        <div v-if="auth.hasPermission('settings.smtp.write')" style="display:flex;gap:8px">
+          <button v-if="bpIsCustom" class="btn btn-ghost btn-sm" @click="resetBlockPage" :disabled="bpSaving">
+            Réinitialiser par défaut
+          </button>
+          <button class="btn btn-primary btn-sm" @click="saveBlockPage" :disabled="bpSaving">
+            {{ bpSaving ? 'Enregistrement…' : 'Enregistrer' }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="bpMsg"
+        :style="`margin-bottom:12px;padding:8px 12px;border-radius:5px;font-size:12px;border:1px solid;${
+          bpMsg.ok
+            ? 'background:rgba(46,160,67,.1);border-color:var(--green);color:var(--green)'
+            : 'background:rgba(248,81,73,.1);border-color:var(--red);color:var(--red)'
+        }`">
+        {{ bpMsg.text }}
+      </div>
+
+      <!-- Éditeur + prévisualisation -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;min-height:520px">
+        <!-- Éditeur -->
+        <div style="display:flex;flex-direction:column">
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text-muted)">Code HTML</div>
+          <textarea
+            v-model="bpCode"
+            spellcheck="false"
+            style="flex:1;min-height:480px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:12px;font-family:'JetBrains Mono',Consolas,monospace;font-size:12px;line-height:1.5;resize:vertical;tab-size:2"
+          ></textarea>
+        </div>
+        <!-- Prévisualisation -->
+        <div style="display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div style="font-size:12px;font-weight:600;color:var(--text-muted)">Prévisualisation</div>
+            <button class="btn-expand" @click="openPreviewTab(bpPreviewHtml)" title="Ouvrir dans un nouvel onglet">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+            </button>
+          </div>
+          <div style="flex:1;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:#f5f5f5">
+            <iframe
+              :srcdoc="bpPreviewHtml"
+              style="width:100%;height:100%;border:none;min-height:480px"
+              sandbox="allow-same-origin allow-scripts"
             ></iframe>
           </div>
         </div>
@@ -570,6 +644,7 @@ const tabs = computed(() => {
   }
   if (auth.hasPermission('settings.smtp.read')) {
     t.push({ key: 'email_template', label: 'Template e-mail' })
+    t.push({ key: 'block_page', label: 'Page de blocage' })
   }
   t.push({ key: 'appearance', label: 'Apparence' })
   if (auth.hasPermission('settings.rmm.read')) {
@@ -699,6 +774,18 @@ async function saveCustomColors() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Prévisualisation nouvel onglet
+// ══════════════════════════════════════════════════════════════════════════════
+function openPreviewTab(html) {
+  if (!html) return
+  const w = window.open('', '_blank')
+  if (!w) return
+  w.document.open()
+  w.document.write(html)
+  w.document.close()
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Template e-mail
 // ══════════════════════════════════════════════════════════════════════════════
 const tplCode       = ref('')
@@ -779,6 +866,71 @@ async function resetTemplate() {
   } finally {
     tplSaving.value = false
     setTimeout(() => { tplMsg.value = null }, 5000)
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Page de blocage
+// ══════════════════════════════════════════════════════════════════════════════
+const bpCode        = ref('')
+const bpPreviewHtml = ref('')
+const bpIsCustom    = ref(false)
+const bpSaving      = ref(false)
+const bpMsg         = ref(null)
+let   bpPreviewTimer = null
+
+watch(bpCode, () => {
+  clearTimeout(bpPreviewTimer)
+  bpPreviewTimer = setTimeout(refreshBlockPreview, 500)
+})
+
+async function refreshBlockPreview() {
+  if (!bpCode.value.trim()) { bpPreviewHtml.value = ''; return }
+  try {
+    const { data } = await settingsApi.previewBlockPage(bpCode.value)
+    bpPreviewHtml.value = data.html
+  } catch {
+    bpPreviewHtml.value = bpCode.value
+  }
+}
+
+async function loadBlockPage() {
+  if (!auth.hasPermission('settings.smtp.read')) return
+  try {
+    const { data } = await settingsApi.getBlockPage()
+    bpCode.value     = data.template
+    bpIsCustom.value = data.is_custom
+    await refreshBlockPreview()
+  } catch {}
+}
+
+async function saveBlockPage() {
+  bpSaving.value = true
+  bpMsg.value = null
+  try {
+    await settingsApi.setBlockPage(bpCode.value)
+    bpIsCustom.value = true
+    bpMsg.value = { ok: true, text: 'Page de blocage enregistrée et déployée.' }
+  } catch (e) {
+    bpMsg.value = { ok: false, text: e.response?.data?.detail ?? 'Erreur lors de l\'enregistrement.' }
+  } finally {
+    bpSaving.value = false
+    setTimeout(() => { bpMsg.value = null }, 5000)
+  }
+}
+
+async function resetBlockPage() {
+  bpSaving.value = true
+  bpMsg.value = null
+  try {
+    await settingsApi.resetBlockPage()
+    await loadBlockPage()
+    bpMsg.value = { ok: true, text: 'Page de blocage réinitialisée par défaut.' }
+  } catch (e) {
+    bpMsg.value = { ok: false, text: e.response?.data?.detail ?? 'Erreur.' }
+  } finally {
+    bpSaving.value = false
+    setTimeout(() => { bpMsg.value = null }, 5000)
   }
 }
 
@@ -948,6 +1100,7 @@ async function loadTab(tab) {
   if (tab === 'smtp')          return loadSmtp()
   if (tab === 'notifications') return Promise.all([loadPrefs(), loadRules()])
   if (tab === 'email_template') return loadTemplate()
+  if (tab === 'block_page')    return loadBlockPage()
   if (tab === 'appearance')    return                // theme deja charge globalement
   if (tab === 'rmm')           return loadIntegrations()
 }
@@ -1007,6 +1160,22 @@ onMounted(() => loadTab(activeTab.value))
   transition: background .1s;
 }
 .tpl-var:hover { background: rgba(88,166,255,.2); }
+
+.btn-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.btn-expand:hover { color: var(--text); border-color: var(--text-muted); }
+
 
 .fade-enter-active, .fade-leave-active { transition: opacity .3s; }
 .fade-enter-from, .fade-leave-to       { opacity: 0; }

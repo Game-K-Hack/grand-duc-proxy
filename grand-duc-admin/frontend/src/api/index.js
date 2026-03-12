@@ -143,6 +143,10 @@ export const settingsApi = {
   setEmailTemplate:    (template) => api.put('/settings/email-template', { template }),
   resetEmailTemplate:  ()         => api.delete('/settings/email-template'),
   previewEmailTemplate:(template) => api.post('/settings/email-template/preview', { template }),
+  getBlockPage:        ()         => api.get('/settings/block-page'),
+  setBlockPage:        (template) => api.put('/settings/block-page', { template }),
+  resetBlockPage:      ()         => api.delete('/settings/block-page'),
+  previewBlockPage:    (template) => api.post('/settings/block-page/preview', { template }),
 }
 
 // ── Intégrations RMM ─────────────────────────────────────────────────────────
