@@ -8,7 +8,6 @@ from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from config   import settings
 from database import get_db
 from models   import User, Role
@@ -60,10 +59,28 @@ async def _decode_user(token: str, db: AsyncSession) -> User:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    result = await db.execute(select(User).where(User.username == username))
-    user   = result.scalar_one_or_none()
-    if user is None or not user.enabled:
+
+    # JOIN avec Role pour charger les permissions en une seule requête
+    result = await db.execute(
+        select(User, Role)
+        .outerjoin(Role, User.role_id == Role.id)
+        .where(User.username == username)
+    )
+    row = result.one_or_none()
+    if row is None:
         raise credentials_exception
+    user, role = row
+    if not user.enabled:
+        raise credentials_exception
+
+    # Cache les permissions sur l'objet user pour éviter des requêtes ultérieures
+    if role:
+        user._perms_cache = json.loads(role.permissions)
+        user._role_obj = role
+    else:
+        user._perms_cache = {}
+        user._role_obj = None
+
     return user
 
 

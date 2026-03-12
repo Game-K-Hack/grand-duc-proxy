@@ -89,7 +89,34 @@ async def list_client_users(
     users = (await db.execute(
         select(ClientUser).order_by(ClientUser.label.nullslast(), ClientUser.ip_address)
     )).scalars().all()
-    return [await build_user_out(db, u) for u in users]
+
+    if not users:
+        return []
+
+    # Batch : charger tous les groupes en 1 requête au lieu de N
+    user_ids = [u.id for u in users]
+    rows = (await db.execute(
+        select(ClientUserGroups.user_id, ClientGroup.id, ClientGroup.name)
+        .join(ClientGroup, ClientGroup.id == ClientUserGroups.group_id)
+        .where(ClientUserGroups.user_id.in_(user_ids))
+        .order_by(ClientGroup.name)
+    )).all()
+
+    groups_by_user: dict[int, list[GroupBrief]] = {}
+    for uid, gid, gname in rows:
+        groups_by_user.setdefault(uid, []).append(GroupBrief(id=gid, name=gname))
+
+    return [
+        ClientUserOut(
+            id=u.id, ip_address=u.ip_address, label=u.label,
+            hostname=u.hostname, os=u.os, source=u.source,
+            last_seen_rmm=u.last_seen_rmm.isoformat() if u.last_seen_rmm else None,
+            rmm_integration_id=u.rmm_integration_id,
+            groups=groups_by_user.get(u.id, []),
+            created_at=u.created_at.isoformat(),
+        )
+        for u in users
+    ]
 
 
 @router.post("", response_model=ClientUserOut, status_code=201)

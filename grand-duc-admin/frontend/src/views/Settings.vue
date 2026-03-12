@@ -384,7 +384,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { settingsApi, integrationsApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 
@@ -661,9 +661,19 @@ async function doDelete() {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-onMounted(async () => {
-  await Promise.all([loadSmtp(), loadPrefs(), loadRules(), loadIntegrations()])
-})
+const loadedTabs = new Set()
+
+async function loadTab(tab) {
+  if (loadedTabs.has(tab)) return
+  loadedTabs.add(tab)
+  if (tab === 'smtp')          return loadSmtp()
+  if (tab === 'notifications') return Promise.all([loadPrefs(), loadRules()])
+  if (tab === 'rmm')           return loadIntegrations()
+}
+
+watch(activeTab, (tab) => loadTab(tab))
+
+onMounted(() => loadTab(activeTab.value))
 </script>
 
 <style scoped>

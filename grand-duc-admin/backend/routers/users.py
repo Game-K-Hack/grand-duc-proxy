@@ -38,20 +38,14 @@ class UserOut(BaseModel):
     last_login: Optional[str]
 
 
-async def user_to_out(u: User, db: AsyncSession) -> UserOut:
-    role_name = "—"
-    if u.role_id:
-        result = await db.execute(select(Role.name).where(Role.id == u.role_id))
-        rn = result.scalar_one_or_none()
-        if rn:
-            role_name = rn
+def _row_to_out(u: User, role_name: str | None) -> UserOut:
     return UserOut(
         id=u.id,
         username=u.username,
         email=u.email,
         role=u.role,
         role_id=u.role_id,
-        role_name=role_name,
+        role_name=role_name or "—",
         enabled=u.enabled,
         created_at=u.created_at.isoformat(),
         last_login=u.last_login.isoformat() if u.last_login else None,
@@ -63,8 +57,13 @@ async def list_users(
     db:    AsyncSession = Depends(get_db),
     _user: User = Depends(require_permission("users.read")),
 ):
-    result = await db.execute(select(User).order_by(User.created_at.desc()))
-    return [await user_to_out(u, db) for u in result.scalars().all()]
+    # JOIN unique : 1 seule requête au lieu de N+1
+    result = await db.execute(
+        select(User, Role.name.label("role_name"))
+        .outerjoin(Role, User.role_id == Role.id)
+        .order_by(User.created_at.desc())
+    )
+    return [_row_to_out(row.User, row.role_name) for row in result.all()]
 
 
 @router.post("", response_model=UserOut, status_code=201)
@@ -104,7 +103,7 @@ async def create_user(
          f"Email : {user.email or '—'}"],
     ))
 
-    return await user_to_out(user, db)
+    return _row_to_out(user, role.name)
 
 
 @router.put("/{user_id}", response_model=UserOut)
@@ -131,7 +130,11 @@ async def update_user(
 
     await db.commit()
     await db.refresh(user)
-    return await user_to_out(user, db)
+    # Récupérer le nom du rôle
+    rn = None
+    if user.role_id:
+        rn = (await db.execute(select(Role.name).where(Role.id == user.role_id))).scalar_one_or_none()
+    return _row_to_out(user, rn)
 
 
 @router.delete("/{user_id}", status_code=204)

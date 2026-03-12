@@ -29,6 +29,10 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!to.meta.public && !auth.isLoggedIn) return '/login'
   if (to.path === '/login' && auth.isLoggedIn) return '/'
+  // Attendre que les permissions soient chargées avant de vérifier
+  if (to.meta.permissions && !auth.user && auth.isLoggedIn) {
+    await auth.fetchMe()
+  }
   if (to.meta.permissions && !auth.hasAnyPermission(...to.meta.permissions)) return '/'
 })
 

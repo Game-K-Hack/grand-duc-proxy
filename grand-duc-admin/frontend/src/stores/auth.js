@@ -41,12 +41,15 @@ export const useAuthStore = defineStore('auth', {
 
     async fetchMe() {
       if (!this.token) return
-      try {
-        const { data } = await authApi.me()
+      if (this._fetchPromise) return this._fetchPromise
+      this._fetchPromise = authApi.me().then(({ data }) => {
         this.user = data
-      } catch {
+      }).catch(() => {
         this.logout()
-      }
+      }).finally(() => {
+        this._fetchPromise = null
+      })
+      return this._fetchPromise
     },
 
     logout() {

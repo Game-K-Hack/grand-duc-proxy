@@ -102,10 +102,16 @@ async def update_smtp(
     if body.password and not body.password.startswith("•"):
         data["smtp_password"] = body.password
 
+    # Batch : charger tous les settings existants en 1 requête (au lieu de N)
+    keys = list(data.keys())
+    existing_rows = (await db.execute(
+        select(AppSetting).where(AppSetting.key.in_(keys))
+    )).scalars().all()
+    existing_map = {s.key: s for s in existing_rows}
+
     for key, value in data.items():
-        existing = await db.get(AppSetting, key)
-        if existing:
-            existing.value = value
+        if key in existing_map:
+            existing_map[key].value = value
         else:
             db.add(AppSetting(key=key, value=value))
 

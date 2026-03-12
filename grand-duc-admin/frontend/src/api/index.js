@@ -19,6 +19,34 @@ api.interceptors.response.use(
   }
 )
 
+// ── Cache simple avec TTL ────────────────────────────────────────────────────
+const _cache = new Map()
+
+function cachedGet(url, ttlMs = 30_000) {
+  const now = Date.now()
+  const entry = _cache.get(url)
+  if (entry && now - entry.ts < ttlMs) {
+    return Promise.resolve(entry.data)
+  }
+  // Dédupliquer les appels concurrents
+  if (entry?.pending) return entry.pending
+  const pending = api.get(url).then(res => {
+    _cache.set(url, { data: res, ts: Date.now(), pending: null })
+    return res
+  }).catch(err => {
+    _cache.delete(url)
+    throw err
+  })
+  _cache.set(url, { ...(entry || {}), pending })
+  return pending
+}
+
+export function invalidateCache(urlPrefix) {
+  for (const key of _cache.keys()) {
+    if (key.startsWith(urlPrefix)) _cache.delete(key)
+  }
+}
+
 export default api
 
 export const authApi = {
@@ -29,10 +57,10 @@ export const authApi = {
 
 export const rulesApi = {
   list:   (params) => api.get('/rules', { params }),
-  create: (body)   => api.post('/rules', body),
-  update: (id, b)  => api.put(`/rules/${id}`, b),
-  toggle: (id)     => api.patch(`/rules/${id}/toggle`),
-  delete: (id)     => api.delete(`/rules/${id}`),
+  create: (body)   => { invalidateCache('/rules'); return api.post('/rules', body) },
+  update: (id, b)  => { invalidateCache('/rules'); return api.put(`/rules/${id}`, b) },
+  toggle: (id)     => { invalidateCache('/rules'); return api.patch(`/rules/${id}/toggle`) },
+  delete: (id)     => { invalidateCache('/rules'); return api.delete(`/rules/${id}`) },
 }
 
 export const logsApi = {
@@ -46,21 +74,21 @@ export const statsApi = {
 
 export const usersApi = {
   list:   ()       => api.get('/users'),
-  create: (body)   => api.post('/users', body),
-  update: (id, b)  => api.put(`/users/${id}`, b),
-  delete: (id)     => api.delete(`/users/${id}`),
+  create: (body)   => { invalidateCache('/users'); return api.post('/users', body) },
+  update: (id, b)  => { invalidateCache('/users'); return api.put(`/users/${id}`, b) },
+  delete: (id)     => { invalidateCache('/users'); return api.delete(`/users/${id}`) },
 }
 
 // ── Groupes de clients ────────────────────────────────────────────────────────
 export const groupsApi = {
-  list:       ()             => api.get('/client-groups'),
-  create:     (body)         => api.post('/client-groups', body),
-  update:     (id, body)     => api.put(`/client-groups/${id}`, body),
-  delete:     (id)           => api.delete(`/client-groups/${id}`),
+  list:       ()             => cachedGet('/client-groups', 15_000),
+  create:     (body)         => { invalidateCache('/client-groups'); return api.post('/client-groups', body) },
+  update:     (id, body)     => { invalidateCache('/client-groups'); return api.put(`/client-groups/${id}`, body) },
+  delete:     (id)           => { invalidateCache('/client-groups'); return api.delete(`/client-groups/${id}`) },
   // Règles du groupe
   listRules:  (id)           => api.get(`/client-groups/${id}/rules`),
-  addRule:    (id, body)     => api.post(`/client-groups/${id}/rules`, body),
-  deleteRule: (id, ruleId)   => api.delete(`/client-groups/${id}/rules/${ruleId}`),
+  addRule:    (id, body)     => { invalidateCache('/client-groups'); return api.post(`/client-groups/${id}/rules`, body) },
+  deleteRule: (id, ruleId)   => { invalidateCache('/client-groups'); return api.delete(`/client-groups/${id}/rules/${ruleId}`) },
 }
 
 // ── Killswitch ────────────────────────────────────────────────────────────────
@@ -101,32 +129,32 @@ export const tlsBypassApi = {
 
 // ── Paramètres globaux & notifications ───────────────────────────────────────
 export const settingsApi = {
-  getSmtp:          ()       => api.get('/settings/smtp'),
-  updateSmtp:       (body)   => api.put('/settings/smtp', body),
+  getSmtp:          ()       => cachedGet('/settings/smtp', 30_000),
+  updateSmtp:       (body)   => { invalidateCache('/settings/smtp'); return api.put('/settings/smtp', body) },
   testSmtp:         (to)     => api.post('/settings/smtp/test', { to }),
   getNotifications: ()       => api.get('/settings/notifications'),
   setNotifications: (body)   => api.put('/settings/notifications', body),
   getRuleWatches:   ()       => api.get('/settings/notifications/rules'),
-  getAvailRules:    ()       => api.get('/settings/notifications/rules/available'),
-  setRuleWatches:   (ids)    => api.put('/settings/notifications/rules', { rule_ids: ids }),
+  getAvailRules:    ()       => cachedGet('/settings/notifications/rules/available', 30_000),
+  setRuleWatches:   (ids)    => { invalidateCache('/settings/notifications'); return api.put('/settings/notifications/rules', { rule_ids: ids }) },
 }
 
 // ── Intégrations RMM ─────────────────────────────────────────────────────────
 export const integrationsApi = {
-  list:   ()          => api.get('/integrations'),
-  create: (body)      => api.post('/integrations', body),
-  update: (id, body)  => api.put(`/integrations/${id}`, body),
-  delete: (id)        => api.delete(`/integrations/${id}`),
+  list:   ()          => cachedGet('/integrations', 30_000),
+  create: (body)      => { invalidateCache('/integrations'); return api.post('/integrations', body) },
+  update: (id, body)  => { invalidateCache('/integrations'); return api.put(`/integrations/${id}`, body) },
+  delete: (id)        => { invalidateCache('/integrations'); return api.delete(`/integrations/${id}`) },
   sync:   (id)        => api.post(`/integrations/${id}/sync`),
 }
 
 // ── Rôles ────────────────────────────────────────────────────────────────────
 export const rolesApi = {
-  list:        ()          => api.get('/roles'),
-  permissions: ()          => api.get('/roles/permissions'),
-  create:      (body)      => api.post('/roles', body),
-  update:      (id, body)  => api.put(`/roles/${id}`, body),
-  delete:      (id)        => api.delete(`/roles/${id}`),
+  list:        ()          => cachedGet('/roles', 30_000),
+  permissions: ()          => cachedGet('/roles/permissions', 120_000),
+  create:      (body)      => { invalidateCache('/roles'); return api.post('/roles', body) },
+  update:      (id, body)  => { invalidateCache('/roles'); return api.put(`/roles/${id}`, body) },
+  delete:      (id)        => { invalidateCache('/roles'); return api.delete(`/roles/${id}`) },
 }
 
 // ── Utilisateurs clients (IP) ─────────────────────────────────────────────────

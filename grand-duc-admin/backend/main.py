@@ -25,26 +25,29 @@ async def _ensure_builtin_roles():
     from permissions import ADMIN_PERMISSIONS, VIEWER_PERMISSIONS
 
     async with AsyncSessionLocal() as db:
-        # Rôle Administrateur
-        result = await db.execute(select(Role).where(Role.name == "Administrateur"))
-        if not result.scalar_one_or_none():
+        # Charger tous les rôles builtin en 1 requête
+        result = await db.execute(select(Role).where(Role.is_builtin == True))
+        existing = {r.name: r for r in result.scalars().all()}
+
+        if "Administrateur" not in existing:
             db.add(Role(name="Administrateur", description="Accès complet à toutes les fonctionnalités",
                         permissions=json.dumps(ADMIN_PERMISSIONS), is_builtin=True))
-        # Rôle Lecteur
-        result = await db.execute(select(Role).where(Role.name == "Lecteur"))
-        if not result.scalar_one_or_none():
+        if "Lecteur" not in existing:
             db.add(Role(name="Lecteur", description="Consultation en lecture seule",
                         permissions=json.dumps(VIEWER_PERMISSIONS), is_builtin=True))
         await db.commit()
 
-        # Assigner un rôle aux utilisateurs qui n'en ont pas
-        admin_role = (await db.execute(select(Role).where(Role.name == "Administrateur"))).scalar_one()
-        viewer_role = (await db.execute(select(Role).where(Role.name == "Lecteur"))).scalar_one()
-
+        # Assigner un rôle aux utilisateurs orphelins
         orphans = (await db.execute(select(User).where(User.role_id.is_(None)))).scalars().all()
-        for u in orphans:
-            u.role_id = admin_role.id if u.role == "admin" else viewer_role.id
         if orphans:
+            # Recharger les rôles si on vient de les créer
+            if "Administrateur" not in existing or "Lecteur" not in existing:
+                result = await db.execute(select(Role).where(Role.is_builtin == True))
+                existing = {r.name: r for r in result.scalars().all()}
+            admin_role = existing["Administrateur"]
+            viewer_role = existing["Lecteur"]
+            for u in orphans:
+                u.role_id = admin_role.id if u.role == "admin" else viewer_role.id
             await db.commit()
 
 

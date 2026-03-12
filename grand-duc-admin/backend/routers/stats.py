@@ -114,11 +114,17 @@ async def get_stats(
     db:    AsyncSession = Depends(get_db),
     _user: User = Depends(require_permission("dashboard.read")),
 ):
-    # Totaux
-    total   = (await db.execute(select(func.count()).select_from(AccessLog))).scalar_one()
-    blocked = (await db.execute(
-        select(func.count()).where(AccessLog.blocked == True)
-    )).scalar_one()
+    # Combiné : totaux + bloqués + aujourd'hui en 1 requête (au lieu de 3)
+    counts_row = (await db.execute(
+        select(
+            func.count().label("total"),
+            func.count().filter(AccessLog.blocked == True).label("blocked"),
+            func.count().filter(
+                func.date(AccessLog.accessed_at) == func.current_date()
+            ).label("today"),
+        ).select_from(AccessLog)
+    )).one()
+    total, blocked, requests_today = counts_row.total, counts_row.blocked, counts_row.today
     allowed = total - blocked
 
     # Règles actives
@@ -126,28 +132,17 @@ async def get_stats(
         select(func.count()).where(FilterRule.enabled == True)
     )).scalar_one()
 
-    # Requêtes aujourd'hui
-    today_q = select(func.count()).where(
-        func.date(AccessLog.accessed_at) == func.current_date()
-    )
-    requests_today = (await db.execute(today_q)).scalar_one()
-
     # Top 10 domaines bloqués
-    top_blocked_q = (
-        select(
-            AccessLog.host,
-            func.count().label("count"),
-            func.sum(func.cast(AccessLog.blocked, type_=func.count().type)).label("blocked"),
-        )
+    top_blocked_rows = (await db.execute(
+        select(AccessLog.host, func.count().label("count"))
         .where(AccessLog.blocked == True)
         .group_by(AccessLog.host)
         .order_by(func.count().desc())
         .limit(10)
-    )
-    top_blocked_rows = (await db.execute(top_blocked_q)).all()
+    )).all()
 
     # Top 10 domaines toutes requêtes confondues
-    top_domains_q = (
+    top_domains_rows = (await db.execute(
         select(
             AccessLog.host,
             func.count().label("count"),
@@ -156,8 +151,7 @@ async def get_stats(
         .group_by(AccessLog.host)
         .order_by(func.count().desc())
         .limit(10)
-    )
-    top_domains_rows = (await db.execute(top_domains_q)).all()
+    )).all()
 
     block_rate = round((blocked / total * 100) if total > 0 else 0.0, 1)
 
