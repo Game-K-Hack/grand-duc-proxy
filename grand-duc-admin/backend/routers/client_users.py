@@ -1,7 +1,10 @@
+import ipaddress
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, delete, insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 
 from database import get_db
@@ -19,6 +22,15 @@ class ClientUserIn(BaseModel):
     label:      Optional[str] = None
     hostname:   Optional[str] = None
     os:         Optional[str] = None
+
+    @field_validator("ip_address")
+    @classmethod
+    def validate_ip(cls, v: str) -> str:
+        try:
+            ipaddress.ip_address(v.strip())
+        except ValueError:
+            raise ValueError(f"Adresse IP invalide : {v}")
+        return v.strip()
 
 
 class ClientUserUpdate(BaseModel):
@@ -223,7 +235,7 @@ async def test_access(
     db:   AsyncSession = Depends(get_db),
     _u:   User = Depends(require_permission("test_access.use")),
 ):
-    import re
+    from routers.rules import safe_regex_search
 
     # Récupère l'utilisateur
     u = await get_user_or_404(db, body.user_id)
@@ -261,10 +273,7 @@ async def test_access(
     # gagne — qu'elle soit block ou allow.
     if group_ids:
         for rule in all_rules:
-            try:
-                matches = bool(re.search(rule.pattern, url, re.IGNORECASE))
-            except re.error:
-                continue
+            matches = safe_regex_search(rule.pattern, url)
             if not matches or rule.id not in activated_rule_ids:
                 continue
 
@@ -288,10 +297,7 @@ async def test_access(
 
     # ── Groupe par défaut / règle globale (utilisateur sans groupe explicite) ──
     for rule in all_rules:
-        try:
-            matches = bool(re.search(rule.pattern, url, re.IGNORECASE))
-        except re.error:
-            continue
+        matches = safe_regex_search(rule.pattern, url)
         if not matches:
             continue
 

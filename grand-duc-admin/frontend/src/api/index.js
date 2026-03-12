@@ -11,7 +11,9 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   res => res,
   err => {
-    if (err.response?.status === 401) {
+    // Ne pas rediriger sur 401 pour la route login (mauvais identifiants)
+    const isLoginRoute = err.config?.url?.includes('/auth/login')
+    if (err.response?.status === 401 && !isLoginRoute) {
       localStorage.removeItem('token')
       window.location.href = '/login'
     }
@@ -73,10 +75,11 @@ export const statsApi = {
 }
 
 export const usersApi = {
-  list:   ()       => api.get('/users'),
-  create: (body)   => { invalidateCache('/users'); return api.post('/users', body) },
-  update: (id, b)  => { invalidateCache('/users'); return api.put(`/users/${id}`, b) },
-  delete: (id)     => { invalidateCache('/users'); return api.delete(`/users/${id}`) },
+  list:            ()       => api.get('/users'),
+  assignableRoles: ()       => cachedGet('/users/assignable-roles', 30_000),
+  create:          (body)   => { invalidateCache('/users'); return api.post('/users', body) },
+  update:          (id, b)  => { invalidateCache('/users'); return api.put(`/users/${id}`, b) },
+  delete:          (id)     => { invalidateCache('/users'); return api.delete(`/users/${id}`) },
 }
 
 // ── Groupes de clients ────────────────────────────────────────────────────────
@@ -114,7 +117,7 @@ export const certificatesApi = {
     const form = new FormData()
     form.append('cert_file', certFile)
     form.append('key_file',  keyFile)
-    return api.post('/certificates/import', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    return api.post('/certificates/import', form)
   },
   history:  ()                       => api.get('/certificates/history'),
   downloadUrl: () => '/api/certificates/ca.crt',

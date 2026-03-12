@@ -1,5 +1,5 @@
 import re
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, field_validator
@@ -11,6 +11,51 @@ from security import require_permission
 from models   import User
 
 router = APIRouter()
+
+
+# ── Protection ReDoS ─────────────────────────────────────────────────────────
+
+_REGEX_MAX_LENGTH = 500  # longueur max du pattern
+
+# Détection statique de patterns dangereux (backtracking catastrophique)
+# Quantificateurs imbriqués : (a+)+, (a*)+, (a+)*, (a{2,})+ etc.
+_DANGEROUS_PATTERNS = [
+    re.compile(r'\([^)]*[+*][^)]*\)[+*]'),     # (x+)+ (x+)* (x*)+ (x*)*
+    re.compile(r'\([^)]*\{[^}]+\}[^)]*\)[+*]'), # (x{n,})+ etc.
+    re.compile(r'[+*]\??\.\*[+*]'),              # a+.*b+ adjacents
+]
+
+
+def _has_dangerous_pattern(pattern: str) -> bool:
+    """Détecte les constructions regex connues pour causer du backtracking catastrophique."""
+    for dp in _DANGEROUS_PATTERNS:
+        if dp.search(pattern):
+            return True
+    return False
+
+
+def _safe_regex_test(pattern: str) -> None:
+    """Compile la regex et vérifie qu'elle ne contient pas de patterns dangereux."""
+    if len(pattern) > _REGEX_MAX_LENGTH:
+        raise ValueError(f"Le pattern ne doit pas dépasser {_REGEX_MAX_LENGTH} caractères")
+    if _has_dangerous_pattern(pattern):
+        raise ValueError(
+            "Expression régulière rejetée : quantificateurs imbriqués détectés "
+            "(risque de backtracking catastrophique). "
+            "Exemple interdit : (a+)+, (.*a)* — simplifiez votre expression."
+        )
+    try:
+        re.compile(pattern)
+    except re.error as e:
+        raise ValueError(f"Expression régulière invalide : {e}")
+
+
+def safe_regex_search(pattern: str, text: str) -> bool:
+    """Exécute re.search de façon sécurisée (le pattern a déjà été validé à la création)."""
+    try:
+        return bool(re.search(pattern, text, re.IGNORECASE))
+    except re.error:
+        return False
 
 
 # ── Schémas ───────────────────────────────────────────────────────────────────
@@ -25,10 +70,7 @@ class RuleIn(BaseModel):
     @field_validator("pattern")
     @classmethod
     def validate_regex(cls, v: str) -> str:
-        try:
-            re.compile(v)
-        except re.error as e:
-            raise ValueError(f"Expression régulière invalide : {e}")
+        _safe_regex_test(v)
         return v
 
     @field_validator("action")
@@ -74,8 +116,8 @@ class RulesListResponse(BaseModel):
 
 @router.get("", response_model=RulesListResponse)
 async def list_rules(
-    skip:    int = 0,
-    limit:   int = 100,
+    skip:    int = Query(0, ge=0),
+    limit:   int = Query(100, ge=1, le=500),
     search:  str = "",
     db:      AsyncSession = Depends(get_db),
     _user:   User = Depends(require_permission("rules.read")),

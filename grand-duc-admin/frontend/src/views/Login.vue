@@ -64,6 +64,8 @@ async function submit() {
   try {
     await auth.login(username.value, password.value)
     router.push('/')
-  } catch {}
+  } catch {
+    password.value = ''
+  }
 }
 </script>

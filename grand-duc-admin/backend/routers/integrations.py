@@ -26,6 +26,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# ── Validation URL RMM ────────────────────────────────────────────────────────
+
+def _validate_rmm_url(url: str) -> str:
+    """Vérifie que l'URL RMM est bien formée (schéma http/https, hostname présent)."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("L'URL doit commencer par http:// ou https://")
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("URL invalide : pas de nom d'hôte")
+    return url
+
+
 # ── Données d'agent normalisées ────────────────────────────────────────────────
 
 @dataclass
@@ -48,6 +62,7 @@ async def _fetch_tactical(intg: RmmIntegration) -> list[AgentData]:
     """
     headers = {"X-API-KEY": intg.api_key, "Content-Type": "application/json"}
     base = intg.url.rstrip("/")
+    _validate_rmm_url(base)
 
     async with httpx.AsyncClient(verify=False, timeout=30, follow_redirects=True) as client:
         # Endpoint officiel Tactical RMM : GET /agents/
@@ -117,6 +132,7 @@ async def _fetch_tactical(intg: RmmIntegration) -> list[AgentData]:
 async def _fetch_ninja(intg: RmmIntegration) -> list[AgentData]:
     """NinjaRMM — OAuth2 client_credentials puis GET /v2/devices."""
     base = intg.url.rstrip("/")
+    _validate_rmm_url(base)
     # 1. Récupérer le token OAuth2
     async with httpx.AsyncClient(verify=False, timeout=20) as client:
         token_r = await client.post(
@@ -156,6 +172,7 @@ async def _fetch_ninja(intg: RmmIntegration) -> list[AgentData]:
 async def _fetch_datto(intg: RmmIntegration) -> list[AgentData]:
     """Datto RMM — API v2 avec Basic auth (api_key:api_secret)."""
     base = intg.url.rstrip("/")
+    _validate_rmm_url(base)
     auth = (intg.api_key, intg.api_secret or "")
     async with httpx.AsyncClient(verify=False, timeout=30, auth=auth) as client:
         # Lister tous les sites d'abord
@@ -187,6 +204,7 @@ async def _fetch_datto(intg: RmmIntegration) -> list[AgentData]:
 async def _fetch_atera(intg: RmmIntegration) -> list[AgentData]:
     """Atera — API REST avec header X-API-KEY, pagination offset."""
     base = intg.url.rstrip("/")
+    _validate_rmm_url(base)
     headers = {"X-API-KEY": intg.api_key, "Accept": "application/json"}
     results = []
     page = 1
@@ -443,10 +461,19 @@ class IntegrationOut(BaseModel):
     created_at:            str
 
 
+def _mask(secret: str | None) -> str:
+    """Masque un secret en ne montrant que les 4 derniers caractères."""
+    if not secret:
+        return ""
+    if len(secret) <= 4:
+        return "••••"
+    return "••••••••" + secret[-4:]
+
+
 def _out(i: RmmIntegration) -> IntegrationOut:
     return IntegrationOut(
         id=i.id, name=i.name, type=i.type, url=i.url,
-        api_key=i.api_key, api_secret=i.api_secret,
+        api_key=_mask(i.api_key), api_secret=_mask(i.api_secret),
         enabled=i.enabled, sync_interval_minutes=i.sync_interval_minutes,
         auto_group_by=i.auto_group_by or "none",
         last_sync_at=i.last_sync_at.isoformat() if i.last_sync_at else None,
@@ -477,6 +504,10 @@ async def create_integration(
 ):
     if body.type not in VALID_TYPES:
         raise HTTPException(400, f"Type invalide. Valeurs acceptées : {', '.join(VALID_TYPES)}")
+    try:
+        _validate_rmm_url(body.url)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     intg = RmmIntegration(**body.model_dump())
     db.add(intg)
     await db.commit()
@@ -494,6 +525,9 @@ async def update_integration(
     if not intg:
         raise HTTPException(404, "Intégration introuvable")
     for k, v in body.model_dump(exclude_none=True).items():
+        # Ne pas écraser les secrets si la valeur est masquée (non modifiée côté frontend)
+        if k in ("api_key", "api_secret") and v.startswith("••"):
+            continue
         setattr(intg, k, v)
     await db.commit()
     await db.refresh(intg)

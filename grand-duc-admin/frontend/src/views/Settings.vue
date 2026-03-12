@@ -468,6 +468,7 @@
               </td>
               <td style="font-family:monospace;font-size:11px;color:var(--text-muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                 {{ intg.url }}
+                <div v-if="intg.api_key" style="font-size:10px;margin-top:2px;opacity:.7">Clé : {{ intg.api_key }}</div>
               </td>
               <td>
                 <span v-if="!intg.enabled" class="badge badge-muted">Désactivé</span>
@@ -780,8 +781,15 @@ function openPreviewTab(html) {
   if (!html) return
   const w = window.open('', '_blank')
   if (!w) return
+  // Sécurité : utiliser une iframe sandboxée pour isoler le contenu du template
+  // afin d'empêcher l'exécution de scripts dans le contexte de l'app admin
   w.document.open()
-  w.document.write(html)
+  w.document.write(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Prévisualisation</title>
+<style>*{margin:0;padding:0}html,body,iframe{width:100%;height:100%;border:none}</style>
+</head><body>
+<iframe sandbox="allow-same-origin" srcdoc="${html.replace(/"/g, '&quot;').replace(/\\/g, '\\\\')}"></iframe>
+</body></html>`)
   w.document.close()
 }
 

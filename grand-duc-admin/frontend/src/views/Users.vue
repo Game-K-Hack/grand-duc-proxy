@@ -84,7 +84,8 @@
           </div>
           <div class="form-group">
             <label class="form-label">Rôle</label>
-            <select v-model="form.role_id" class="form-select">
+            <select v-model="form.role_id" class="form-select" :disabled="!roles.length">
+              <option v-if="!roles.length" disabled value="">Aucun rôle disponible</option>
               <option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</option>
             </select>
           </div>
@@ -125,7 +126,7 @@
 
 <script setup>
 import { ref, onMounted }   from 'vue'
-import { usersApi, rolesApi } from '@/api'
+import { usersApi }          from '@/api'
 import { useAuthStore }     from '@/stores/auth'
 
 const auth          = useAuthStore()
@@ -151,7 +152,7 @@ function fmtDate(iso) {
 
 async function loadRoles() {
   try {
-    const { data } = await rolesApi.list()
+    const { data } = await usersApi.assignableRoles()
     roles.value = data
   } catch { /* ignore */ }
 }

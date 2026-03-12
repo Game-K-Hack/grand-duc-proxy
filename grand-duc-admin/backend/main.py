@@ -62,9 +62,9 @@ async def _ensure_columns():
         try:
             async with engine.begin() as conn:
                 exists = await conn.scalar(text(
-                    f"SELECT 1 FROM information_schema.columns "
-                    f"WHERE table_name='{table}' AND column_name='{col}'"
-                ))
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = :table AND column_name = :col"
+                ).bindparams(table=table, col=col))
                 if not exists:
                     await conn.execute(text(sql))
                     logger.info("Migration : ajout colonne %s.%s", table, col)
@@ -117,9 +117,38 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.ADMIN_CORS_ORIGIN],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+
+# ── Security headers middleware (pure ASGI — compatible avec les uploads) ─────
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+class SecurityHeadersMiddleware:
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                headers = dict(message.get("headers", []))
+                extra = [
+                    (b"x-content-type-options", b"nosniff"),
+                    (b"x-frame-options", b"DENY"),
+                    (b"x-xss-protection", b"1; mode=block"),
+                    (b"referrer-policy", b"strict-origin-when-cross-origin"),
+                ]
+                message["headers"] = list(message.get("headers", [])) + extra
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(auth.router,  prefix="/api/auth",  tags=["Auth"])
 app.include_router(rules.router, prefix="/api/rules", tags=["Règles"])

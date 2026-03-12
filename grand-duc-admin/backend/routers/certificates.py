@@ -212,8 +212,14 @@ async def import_cert(
     db:        AsyncSession = Depends(get_db),
     user:      User = Depends(require_permission("certificates.write")),
 ):
-    cert_pem = await cert_file.read()
-    key_der  = await key_file.read()
+    # Limite de taille : 1 Mo max par fichier (anti-DoS)
+    MAX_UPLOAD = 1_048_576
+    cert_pem = await cert_file.read(MAX_UPLOAD + 1)
+    if len(cert_pem) > MAX_UPLOAD:
+        raise HTTPException(400, "Le fichier certificat dépasse la taille maximale (1 Mo)")
+    key_der = await key_file.read(MAX_UPLOAD + 1)
+    if len(key_der) > MAX_UPLOAD:
+        raise HTTPException(400, "Le fichier clé dépasse la taille maximale (1 Mo)")
 
     cert = _validate_ca_cert_and_key(cert_pem, key_der)
 
