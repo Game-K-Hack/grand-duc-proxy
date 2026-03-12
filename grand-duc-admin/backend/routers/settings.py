@@ -164,7 +164,7 @@ class EmailTemplateOut(BaseModel):
 @router.get("/email-template", response_model=EmailTemplateOut)
 async def get_email_template(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_permission("settings.smtp.read")),
+    _user: User = Depends(require_permission("settings.templates.read")),
 ):
     row = await db.get(AppSetting, "email_template")
     if row:
@@ -176,7 +176,7 @@ async def get_email_template(
 async def set_email_template(
     body:  EmailTemplateIn,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_permission("settings.smtp.write")),
+    _user: User = Depends(require_permission("settings.templates.write")),
 ):
     row = await db.get(AppSetting, "email_template")
     if row:
@@ -191,7 +191,7 @@ async def set_email_template(
 @router.delete("/email-template")
 async def reset_email_template(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_permission("settings.smtp.write")),
+    _user: User = Depends(require_permission("settings.templates.write")),
 ):
     row = await db.get(AppSetting, "email_template")
     if row:
@@ -208,7 +208,7 @@ class PreviewIn(BaseModel):
 @router.post("/email-template/preview")
 async def preview_email_template(
     body:  PreviewIn,
-    _user: User = Depends(require_permission("settings.smtp.read")),
+    _user: User = Depends(require_permission("settings.templates.read")),
 ):
     """Rendu du template avec des données fictives, pour prévisualisation."""
     sample_details = [
@@ -270,7 +270,7 @@ class BlockPageOut(BaseModel):
 @router.get("/block-page", response_model=BlockPageOut)
 async def get_block_page(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_permission("settings.smtp.read")),
+    _user: User = Depends(require_permission("settings.templates.read")),
 ):
     row = await db.get(AppSetting, "block_page_template")
     if row:
@@ -286,7 +286,7 @@ class BlockPageIn(BaseModel):
 async def set_block_page(
     body:  BlockPageIn,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_permission("settings.smtp.write")),
+    _user: User = Depends(require_permission("settings.templates.write")),
 ):
     row = await db.get(AppSetting, "block_page_template")
     if row:
@@ -301,7 +301,7 @@ async def set_block_page(
 @router.delete("/block-page")
 async def reset_block_page(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_permission("settings.smtp.write")),
+    _user: User = Depends(require_permission("settings.templates.write")),
 ):
     row = await db.get(AppSetting, "block_page_template")
     if row:
@@ -316,7 +316,7 @@ async def reset_block_page(
 @router.post("/block-page/preview")
 async def preview_block_page(
     body:  BlockPageIn,
-    _user: User = Depends(require_permission("settings.smtp.read")),
+    _user: User = Depends(require_permission("settings.templates.read")),
 ):
     """Retourne le HTML avec une URL bloquée fictive injectée (comme le proxy)."""
     sample_url = "https://discord.com/channels/example"

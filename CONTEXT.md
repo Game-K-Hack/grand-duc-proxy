@@ -18,42 +18,57 @@ grand-duc/
 ├── src/
 │   └── main.rs                        # Proxy Rust (point d'entrée unique)
 ├── Cargo.toml
+├── templates/
+│   └── blocked/
+│       └── index.html                 # Page de blocage par défaut (HTML + assets base64)
 ├── grand-duc-ca.key                   # Clé privée CA (PKCS#8 DER) — NE PAS VERSIONNER
 ├── grand-duc-ca.crt                   # Certificat CA (PEM) — à distribuer aux postes
 │
 └── grand-duc-admin/
     ├── backend/
-    │   ├── main.py                    # Point d'entrée FastAPI
+    │   ├── main.py                    # Point d'entrée FastAPI + seeding rôles builtin
     │   ├── config.py                  # Settings (pydantic-settings, lit .env)
     │   ├── database.py                # Engine SQLAlchemy async + get_db()
-    │   ├── models.py                  # Modèles ORM SQLAlchemy
-    │   ├── security.py                # bcrypt (direct, sans passlib), JWT HS256
+    │   ├── models.py                  # Modèles ORM SQLAlchemy (User, Role, AppSetting…)
+    │   ├── security.py                # JWT HS256, require_permission(), require_admin
+    │   ├── permissions.py             # ALL_PERMISSIONS (31 clés), labels FR, rôles builtin
     │   ├── .env                       # Variables d'environnement (NE PAS VERSIONNER)
     │   ├── requirements.txt
+    │   ├── services/
+    │   │   └── email.py               # Envoi e-mails, template HTML, render_template()
     │   └── routers/
     │       ├── __init__.py
-    │       ├── auth.py                # POST /api/auth/login, GET /api/auth/me
+    │       ├── auth.py                # POST /api/auth/login, GET /api/auth/me (+ permissions)
     │       ├── rules.py               # CRUD /api/rules
     │       ├── logs.py                # GET /api/logs
     │       ├── stats.py               # GET /api/stats, GET /api/stats/traffic
-    │       ├── users.py               # CRUD /api/users (comptes admin)
+    │       ├── users.py               # CRUD /api/users (comptes admin, role_id)
+    │       ├── roles.py               # CRUD /api/roles + GET /api/roles/permissions
     │       ├── client_groups.py       # CRUD /api/client-groups + règles du groupe
-    │       └── client_users.py        # CRUD /api/client-users + groupes + test-access
+    │       ├── client_users.py        # CRUD /api/client-users + groupes + test-access
+    │       ├── tls_bypass.py          # CRUD /api/tls-bypass (exceptions TLS)
+    │       ├── killswitch.py          # GET/POST /api/killswitch + historique
+    │       ├── certificates.py        # Gestion CA : génération, import, historique
+    │       ├── proxy_control.py       # Statut/redémarrage proxy + logs SSE
+    │       ├── integrations.py        # CRUD /api/integrations (RMM) + sync
+    │       └── settings.py            # SMTP, notifications, templates, thème, page de blocage
     │
     └── frontend/
         ├── package.json
         ├── vite.config.js             # Proxy /api → http://localhost:8000
         └── src/
             ├── main.js
-            ├── App.vue                # Layout + sidebar navigation
+            ├── App.vue                # Layout + sidebar navigation (permission-aware)
             ├── assets/
-            │   └── main.css           # Thème sombre, variables CSS
+            │   └── main.css           # Variables CSS, classes utilitaires
             ├── api/
-            │   └── index.js           # Axios + intercepteurs JWT, helpers par domaine
+            │   └── index.js           # Axios + intercepteurs JWT, cache, helpers par domaine
+            ├── composables/
+            │   └── useTheme.js        # Thèmes prédéfinis, couleurs custom, persistance
             ├── stores/
-            │   └── auth.js            # Pinia store : token, user, isAdmin, fetchMe()
+            │   └── auth.js            # Pinia store : token, user, permissions, hasPermission()
             ├── router/
-            │   └── index.js           # Vue Router avec guards auth/admin
+            │   └── index.js           # Vue Router avec guards par permissions
             └── views/
                 ├── Login.vue
                 ├── Dashboard.vue      # Stats + graphique SVG trafic réseau
@@ -62,7 +77,14 @@ grand-duc/
                 ├── ClientGroups.vue   # Groupes + assignation des règles
                 ├── ClientUsers.vue    # Utilisateurs IP + assignation multi-groupes
                 ├── TestAccess.vue     # Simulateur d'accès utilisateur/URL
-                └── Users.vue          # Comptes administrateurs
+                ├── Users.vue          # Comptes administrateurs (role_id dynamique)
+                ├── Roles.vue          # Gestion des rôles + permissions granulaires
+                ├── TlsBypass.vue      # Exceptions TLS
+                ├── Killswitch.vue     # Interrupteur d'urgence
+                ├── Certificates.vue   # Certificats CA (génération, import, historique)
+                ├── ProxyLogs.vue      # Logs proxy temps réel (SSE)
+                ├── Settings.vue       # SMTP, notifications, templates, apparence, RMM
+                └── Documentation.vue  # Guide intégré avec sommaire interactif
 ```
 
 ---
@@ -100,13 +122,24 @@ user_agent  TEXT
 accessed_at TIMESTAMPTZ DEFAULT NOW()
 ```
 
+#### `roles` — Rôles et permissions
+```sql
+id          BIGSERIAL PRIMARY KEY
+name        TEXT UNIQUE NOT NULL
+description TEXT
+permissions TEXT NOT NULL DEFAULT '{}'  -- JSON {"perm.key": true}
+is_builtin  BOOLEAN NOT NULL DEFAULT FALSE
+created_at  TIMESTAMPTZ DEFAULT NOW()
+```
+Rôles builtin : `Administrateur` (toutes permissions), `Lecteur` (*.read)
+
 #### `users` — Comptes administrateurs de l'interface web
 ```sql
 id              BIGSERIAL PRIMARY KEY
 username        TEXT UNIQUE NOT NULL
 email           TEXT
-hashed_password TEXT NOT NULL          -- bcrypt hash (direct, sans passlib)
-role            TEXT CHECK IN ('admin','viewer')
+hashed_password TEXT NOT NULL          -- bcrypt hash
+role_id         BIGINT REFERENCES roles(id)
 enabled         BOOLEAN DEFAULT TRUE
 created_at      TIMESTAMPTZ DEFAULT NOW()
 last_login      TIMESTAMPTZ
@@ -151,6 +184,68 @@ UNIQUE (group_id, rule_id)
 L'action vient toujours de `filter_rules.action`. Un groupe active/désactive simplement une règle.
 L'interface admin (ClientGroups.vue) envoie `action = rule.action` lors de l'activation — sans
 permettre à l'utilisateur de choisir une action différente.
+
+#### `tls_bypass` — Exceptions TLS
+```sql
+id          BIGSERIAL PRIMARY KEY
+host        TEXT UNIQUE NOT NULL       -- ex: "discord.com"
+description TEXT
+created_at  TIMESTAMPTZ DEFAULT NOW()
+```
+
+#### `killswitch` — État et historique du killswitch
+```sql
+id          BIGSERIAL PRIMARY KEY
+active      BOOLEAN NOT NULL
+changed_by  TEXT
+changed_at  TIMESTAMPTZ DEFAULT NOW()
+```
+
+#### `smtp_config` — Configuration SMTP (table `app_settings`, clé unique)
+#### `app_settings` — Paramètres globaux (clé-valeur)
+```sql
+key         TEXT PRIMARY KEY           -- ex: "smtp_config", "email_template", "block_page_template"
+value       TEXT NOT NULL              -- JSON ou HTML selon la clé
+```
+
+#### `notification_prefs` — Préférences de notification par utilisateur
+```sql
+user_id     BIGINT REFERENCES users(id) ON DELETE CASCADE
+event_type  TEXT NOT NULL              -- ex: "certificate", "proxy_restart", "killswitch"
+enabled     BOOLEAN DEFAULT FALSE
+PRIMARY KEY (user_id, event_type)
+```
+
+#### `user_themes` — Thème par utilisateur
+```sql
+user_id     BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE
+theme       TEXT NOT NULL              -- JSON {presetId, customColors}
+```
+
+#### `rmm_integrations` — Intégrations RMM
+```sql
+id                    BIGSERIAL PRIMARY KEY
+name                  TEXT NOT NULL
+type                  TEXT NOT NULL              -- tactical, ninja, datto, atera
+url                   TEXT NOT NULL
+api_key               TEXT NOT NULL
+api_secret            TEXT
+sync_interval_minutes INTEGER DEFAULT 60
+auto_group_by         TEXT DEFAULT 'none'        -- none, client, site, client_site
+enabled               BOOLEAN DEFAULT TRUE
+last_sync_at          TIMESTAMPTZ
+last_sync_status      TEXT
+created_at            TIMESTAMPTZ DEFAULT NOW()
+```
+
+#### `certificate_history` — Historique des certificats CA
+```sql
+id          BIGSERIAL PRIMARY KEY
+action      TEXT NOT NULL              -- "generate" ou "import"
+fingerprint TEXT
+changed_by  TEXT
+created_at  TIMESTAMPTZ DEFAULT NOW()
+```
 
 ---
 
@@ -255,23 +350,27 @@ class Settings(BaseSettings):
 si `DATABASE_URL` est définie au niveau Windows, elle écrase le `.env`.
 
 ### security.py
-```python
-import bcrypt
-# PAS de passlib — incompatible avec bcrypt 4.x
+- `verify_password` / `hash_password` via `passlib` + bcrypt
+- `get_current_user` : vérifie JWT + `user.enabled`, charge les permissions du rôle en cache
+- `require_permission(*keys)` : factory de dépendance FastAPI, vérifie les permissions granulaires
+- `require_permission_query(*keys)` : variante pour SSE (token en query param)
+- `require_admin` : alias legacy, vérifie `role == 'admin'`
 
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
+### permissions.py (31 permissions)
+Convention : `<section>.<action>` (read | write | use | restart)
 
-def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
-```
+| Section | Permissions |
+|---------|-------------|
+| Monitoring | `dashboard.read`, `logs.read`, `proxy_logs.read` |
+| Filtrage | `rules.read/write`, `client_groups.read/write`, `client_users.read/write`, `test_access.use` |
+| Administration | `tls_bypass.read/write`, `killswitch.read/write`, `certificates.read/write`, `users.read/write`, `roles.read/write`, `proxy.restart` |
+| Paramètres | `settings.smtp.read/write`, `settings.templates.read/write`, `settings.appearance.read/write`, `settings.rmm.read/write` |
 
 ### Authentification
 - JWT HS256 via `python-jose`
-- `get_current_user` : vérifie token + `user.enabled`
-- `require_admin` : vérifie `role == 'admin'`
-- Viewer : lecture seule (rules, logs, stats, client-groups, client-users)
-- Admin : CRUD complet + users + modifications groupes/règles
+- `get_current_user` : vérifie token + `user.enabled` + JOIN avec Role pour charger permissions
+- Permissions granulaires par endpoint via `require_permission("perm.key")`
+- `/api/auth/me` retourne `permissions: dict` et `role_name: str`
 
 ### Endpoints REST
 
@@ -351,6 +450,90 @@ PUT    /api/users/{id}
 DELETE /api/users/{id}
 ```
 
+#### Rôles
+```
+GET    /api/roles/permissions              → liste des 31 permissions avec labels FR
+GET    /api/roles                          → list[RoleOut]
+POST   /api/roles                          → RoleOut
+PUT    /api/roles/{id}                     → RoleOut  (builtin : permissions modifiables, nom/suppression interdits)
+DELETE /api/roles/{id}                     (interdit sur les rôles builtin)
+```
+
+#### Exceptions TLS
+```
+GET    /api/tls-bypass                     → list[TlsBypassOut]
+POST   /api/tls-bypass                     → TlsBypassOut
+DELETE /api/tls-bypass/{id}
+```
+
+#### Killswitch
+```
+GET    /api/killswitch                     → { active, changed_by, changed_at }
+POST   /api/killswitch                     → { active }  (body : { active: bool })
+GET    /api/killswitch/history             → list (50 dernières entrées)
+POST   /api/killswitch/verify-password     → { valid: bool }
+```
+
+#### Certificats CA
+```
+GET    /api/certificates/info              → { fingerprint, issuer, not_before, not_after, … }
+GET    /api/certificates/ca.crt            → téléchargement PEM (public, sans auth)
+POST   /api/certificates/generate          → génère nouveau CA (key + cert)
+POST   /api/certificates/import            → import fichiers key + cert (multipart)
+GET    /api/certificates/history           → list (50 dernières entrées)
+```
+
+#### Contrôle proxy
+```
+GET    /api/proxy/status                   → { running, pid, uptime }
+GET    /api/proxy/logs                     → SSE (token en query param, permission proxy_logs.read)
+POST   /api/proxy/restart                  → { ok }
+```
+
+#### Intégrations RMM
+```
+GET    /api/integrations                   → list[IntegrationOut]
+POST   /api/integrations                   → IntegrationOut
+PUT    /api/integrations/{id}              → IntegrationOut
+DELETE /api/integrations/{id}
+POST   /api/integrations/{id}/sync         → déclenche sync manuelle
+```
+
+#### Paramètres — SMTP
+```
+GET    /api/settings/smtp                  → SmtpConfigOut (password masqué)
+PUT    /api/settings/smtp                  → { ok }
+POST   /api/settings/smtp/test             → { ok }  (envoie un e-mail de test)
+```
+
+#### Paramètres — Templates
+```
+GET    /api/settings/email-template        → { template, is_custom }
+PUT    /api/settings/email-template        → { ok }
+DELETE /api/settings/email-template        → { ok }  (reset au défaut)
+POST   /api/settings/email-template/preview → { html }
+
+GET    /api/settings/block-page            → { template, is_custom }
+PUT    /api/settings/block-page            → { ok }  (écrit aussi sur disque pour le proxy Rust)
+DELETE /api/settings/block-page            → { ok }  (reset au défaut)
+POST   /api/settings/block-page/preview    → { html }
+```
+
+#### Paramètres — Notifications (par utilisateur, pas de permission spéciale)
+```
+GET    /api/settings/notifications                → list[EventPref]
+PUT    /api/settings/notifications                → { ok }
+GET    /api/settings/notifications/rules          → list[RuleWatchOut]  (règles surveillées)
+GET    /api/settings/notifications/rules/available → list[RuleWatchOut]
+PUT    /api/settings/notifications/rules          → { ok }
+```
+
+#### Paramètres — Thème (par utilisateur, pas de permission spéciale)
+```
+GET    /api/settings/theme                 → { theme }  (JSON ou null)
+PUT    /api/settings/theme                 → { ok }
+```
+
 ---
 
 ## Frontend Vue 3
@@ -394,20 +577,33 @@ table > thead > tr > th / td
 
 ### stores/auth.js (Pinia)
 ```javascript
-// State : token, user { username, role }
+// State : token, user { username, role_name, permissions }
 // Getters : isLoggedIn, isAdmin
-// Actions : login(username, password), logout(), fetchMe()
+// Methods : login(username, password), logout(), fetchMe()
+//           hasPermission(key), hasAnyPermission(...keys)
 ```
 
 ### api/index.js — helpers disponibles
 ```javascript
-authApi        : { login, me }
-rulesApi       : { list(params), create, update, toggle, delete }
-logsApi        : { list(params) }
-statsApi       : { get(), traffic(mode) }
-usersApi       : { list, create, update, delete }
-groupsApi      : { list, create, update, delete, listRules, addRule, deleteRule }
-clientUsersApi : { list, create, update, delete, getGroups, setGroups, testAccess }
+authApi         : { login, me }
+rulesApi        : { list(params), create, update, toggle, delete }
+logsApi         : { list(params) }
+statsApi        : { get(), traffic(mode) }
+usersApi        : { list, create, update, delete }
+groupsApi       : { list, create, update, delete, listRules, addRule, deleteRule }
+clientUsersApi  : { list, create, update, delete, getGroups, setGroups, testAccess }
+tlsBypassApi    : { list, create, delete }
+killswitchApi   : { get, set, history, verifyPassword }
+certificatesApi : { info, generate, importCert, history, downloadUrl }
+proxyApi        : { status, restart, logsUrl(token) }
+settingsApi     : { getSmtp, updateSmtp, testSmtp,
+                    getTemplate, setTemplate, resetTemplate, previewTemplate,
+                    getBlockPage, setBlockPage, resetBlockPage, previewBlockPage,
+                    getNotifications, setNotifications,
+                    getRuleWatches, getAvailableRules, setRuleWatches,
+                    getTheme, setTheme }
+integrationsApi : { list, create, update, delete, sync }
+rolesApi        : { list, permissions, create, update, delete }
 ```
 ⚠️ `rulesApi.list()` retourne `{ items, total }` (pas un tableau direct)
 ⚠️ `groupsApi.listRules(id)` retourne un tableau de `GroupRuleOut`
@@ -422,16 +618,28 @@ SVG natif, pas de librairie externe. Dimensions : `W=900, H=220`.
 `yTicks` calculé dynamiquement avec max 6 graduations "propres" (nice numbers).
 Auto-refresh toutes les 30s via `setInterval` + `onUnmounted` cleanup.
 
-### Routes
+### composables/useTheme.js
+Gère les thèmes (presets prédéfinis + couleurs custom). Persiste côté serveur via `settingsApi`.
+Variables CSS modifiées dynamiquement : `--bg`, `--surface`, `--surface2`, `--border`, `--text`,
+`--text-muted`, `--accent`. Appliqué sur `document.documentElement.style`.
+
+### Routes (permission-based guards)
 ```
-/               Dashboard     (tous)
-/rules          Règles        (tous)
-/logs           Logs          (tous)
-/client-groups  Groupes       (admin)
-/client-users   Utilisateurs  (admin)
-/test-access    Test d'accès  (admin)
-/users          Comptes admin (admin)
-/login          Login         (public)
+/login           Login          (public)
+/                Dashboard      (dashboard.read)
+/rules           Règles         (rules.read)
+/logs            Logs           (logs.read)
+/client-groups   Groupes        (client_groups.read)
+/client-users    Utilisateurs   (client_users.read)
+/test-access     Test d'accès   (test_access.use)
+/users           Comptes admin  (users.read)
+/roles           Rôles          (roles.read)
+/tls-bypass      Exceptions TLS (tls_bypass.read)
+/killswitch      Killswitch     (killswitch.read)
+/certificates    Certificats    (certificates.read)
+/proxy-logs      Logs proxy SSE (proxy_logs.read)
+/settings        Paramètres     (aucune — onglets filtrés par permissions)
+/documentation   Documentation  (aucune)
 ```
 
 ---
@@ -470,3 +678,8 @@ Auto-refresh toutes les 30s via `setInterval` + `onUnmounted` cleanup.
 7. **setGroups** remplace entièrement les groupes — envoyer la liste complète des group_ids
 8. **generate_series** PostgreSQL pour le graphique trafic — nécessite PostgreSQL 9.4+
 9. **CA persistante** — `grand-duc-ca.key` et `.crt` générés au premier lancement Rust
+10. **Rôles builtin** — `Administrateur` et `Lecteur` sont re-seedés au démarrage du backend ; ne pas les supprimer en DB
+11. **Permissions dynamiques** — `ADMIN_PERMISSIONS` / `VIEWER_PERMISSIONS` sont générés depuis `ALL_PERMISSIONS`, ajouter une permission la propage automatiquement
+12. **Page de blocage** — stockée en DB (`app_settings.block_page_template`) ET écrite sur disque (`PROXY_WORK_DIR/templates/blocked/index.html`) pour le proxy Rust
+13. **SSE proxy logs** — utilise `require_permission_query` (token en query param, pas header Authorization)
+14. **Thème / Notifications** — données personnelles par utilisateur, pas de permission spéciale requise (juste authentification)

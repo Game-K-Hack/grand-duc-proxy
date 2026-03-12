@@ -467,6 +467,65 @@
           </div>
         </section>
 
+        <!-- ── Personnalisation des templates ─────────────────── -->
+        <section class="card" id="templates">
+          <h2 class="doc-title">Personnalisation des templates</h2>
+          <p class="doc-p">Grand-Duc permet de personnaliser deux templates HTML directement depuis l'interface d'administration :</p>
+
+          <h3 class="doc-subtitle">Template e-mail</h3>
+          <p class="doc-p">Le template utilisé pour les notifications par e-mail (alertes, règles déclenchées, etc.). Accessible depuis <strong>Paramètres → Template e-mail</strong>.</p>
+          <ul class="doc-list">
+            <li><strong>Éditeur HTML</strong> — modifiez directement le code HTML du template</li>
+            <li><strong>Prévisualisation en direct</strong> — le rendu se met à jour automatiquement pendant l'édition</li>
+            <li><strong>Variables dynamiques</strong> — cliquez sur les badges pour insérer les variables dans le code :
+              <ul>
+                <li><code>{{event_label}}</code> — titre de l'événement</li>
+                <li><code>{{details}}</code> — lignes de détail HTML</li>
+                <li><code>{{date}}</code> — date et heure de l'envoi</li>
+              </ul>
+            </li>
+            <li><strong>Réinitialisation</strong> — restaure le template par défaut à tout moment</li>
+          </ul>
+
+          <h3 class="doc-subtitle">Page de blocage</h3>
+          <p class="doc-p">La page HTML affichée lorsqu'un utilisateur tente d'accéder à un site bloqué par le proxy. Accessible depuis <strong>Paramètres → Page de blocage</strong>.</p>
+          <ul class="doc-list">
+            <li><strong>Éditeur HTML</strong> — personnalisez entièrement l'apparence de la page de blocage</li>
+            <li><strong>Prévisualisation en direct</strong> — le rendu se met à jour pendant l'édition, avec injection de l'URL bloquée comme le ferait le proxy</li>
+            <li><strong>Variable <code>window.__BLOCKED_URL__</code></strong> — injectée automatiquement par le proxy Rust dans le <code>&lt;head&gt;</code> de la page, elle contient l'URL bloquée</li>
+            <li><strong>Déploiement automatique</strong> — à l'enregistrement, le template est sauvegardé en base de données ET écrit sur disque pour que le proxy Rust le lise immédiatement</li>
+          </ul>
+
+          <div class="doc-info">
+            <strong>Ouvrir en grand :</strong> utilisez le bouton d'ouverture externe (icône en haut à droite de la prévisualisation) pour voir le résultat dans un nouvel onglet du navigateur, en taille réelle.
+          </div>
+
+          <div class="doc-warning">
+            La modification de ces templates nécessite la permission <strong>Templates (écriture)</strong>. La consultation en lecture seule est possible avec la permission de lecture.
+          </div>
+        </section>
+
+        <!-- ── Apparence & thèmes ──────────────────────────────── -->
+        <section class="card" id="appearance">
+          <h2 class="doc-title">Apparence et thèmes</h2>
+          <p class="doc-p">Chaque utilisateur peut personnaliser l'apparence de l'interface d'administration depuis <strong>Paramètres → Apparence</strong>. Les préférences sont sauvegardées par utilisateur.</p>
+
+          <h3 class="doc-subtitle">Thèmes prédéfinis</h3>
+          <p class="doc-p">Plusieurs thèmes sont disponibles, chacun avec sa propre palette de couleurs. Cliquez sur un thème pour l'appliquer immédiatement — aucun rechargement nécessaire.</p>
+
+          <h3 class="doc-subtitle">Personnalisation des couleurs</h3>
+          <ul class="doc-list">
+            <li><strong>Couleurs individuelles</strong> — modifiez chaque couleur du thème actif via un sélecteur de couleurs</li>
+            <li><strong>Application immédiate</strong> — les changements sont visibles instantanément dans l'interface</li>
+            <li><strong>Enregistrement</strong> — les couleurs personnalisées sont sauvegardées en base de données et rechargées à chaque connexion</li>
+            <li><strong>Réinitialisation</strong> — revenez aux couleurs du thème prédéfini à tout moment</li>
+          </ul>
+
+          <div class="doc-info">
+            Les préférences de thème sont <strong>personnelles</strong> : chaque utilisateur voit sa propre configuration, sans affecter les autres comptes.
+          </div>
+        </section>
+
       </div>
     </div>
   </div>
@@ -559,6 +618,14 @@ const sections = [
   {
     id: 'rmm', label: 'Intégrations RMM',
     icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
+  },
+  {
+    id: 'templates', label: 'Templates',
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+  },
+  {
+    id: 'appearance', label: 'Apparence',
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`,
   },
 ]
 </script>

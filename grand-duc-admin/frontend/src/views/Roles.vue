@@ -37,20 +37,19 @@
                 <span v-else class="badge" style="background:var(--bg-tertiary);color:var(--text-muted)">Personnalisé</span>
               </td>
               <td v-if="auth.hasPermission('roles.write')" style="display:flex;gap:6px;padding:8px 14px">
-                <button class="btn btn-ghost btn-sm btn-icon" @click="openEdit(r)" title="Modifier"
-                        :disabled="r.is_builtin && r.name === 'Administrateur'">
+                <button v-if="!(r.is_builtin && r.name === 'Administrateur')" class="btn btn-ghost btn-sm btn-icon" @click="openEdit(r)" title="Modifier">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
                     <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
                   </svg>
                 </button>
-                <button class="btn btn-danger btn-sm btn-icon" @click="confirmDelete(r)" title="Supprimer"
-                        :disabled="r.is_builtin || r.user_count > 0">
+                <button v-if="!(r.is_builtin || r.user_count > 0)" class="btn btn-danger btn-sm btn-icon" @click="confirmDelete(r)" title="Supprimer">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
                     <path d="M10 11v6M14 11v6M9 6V4h6v2"/>
                   </svg>
                 </button>
+                <span v-if="(r.is_builtin && r.name === 'Administrateur') && (r.is_builtin || r.user_count > 0)" style="height: calc(14px + 13px);"></span>
               </td>
             </tr>
           </tbody>

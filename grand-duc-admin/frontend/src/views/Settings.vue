@@ -188,7 +188,7 @@
     <!-- ══════════════════════════════════════════════════════════════════════ -->
     <!-- Onglet : Template e-mail                                               -->
     <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <div v-if="activeTab === 'email_template' && auth.hasPermission('settings.smtp.read')">
+    <div v-if="activeTab === 'email_template' && auth.hasPermission('settings.templates.read')">
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
         <div>
@@ -197,7 +197,7 @@
             Modifiez le HTML du template. Utilisez les variables ci-dessous pour injecter le contenu dynamique.
           </div>
         </div>
-        <div v-if="auth.hasPermission('settings.smtp.write')" style="display:flex;gap:8px">
+        <div v-if="auth.hasPermission('settings.templates.write')" style="display:flex;gap:8px">
           <button v-if="tplIsCustom" class="btn btn-ghost btn-sm" @click="resetTemplate" :disabled="tplSaving">
             Réinitialiser par défaut
           </button>
@@ -265,7 +265,7 @@
     <!-- ══════════════════════════════════════════════════════════════════════ -->
     <!-- Onglet : Page de blocage                                               -->
     <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <div v-if="activeTab === 'block_page' && auth.hasPermission('settings.smtp.read')">
+    <div v-if="activeTab === 'block_page' && auth.hasPermission('settings.templates.read')">
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
         <div>
@@ -275,7 +275,7 @@
             La variable <code style="color:var(--blue)">window.__BLOCKED_URL__</code> contient l'URL bloquée (injectée par le proxy).
           </div>
         </div>
-        <div v-if="auth.hasPermission('settings.smtp.write')" style="display:flex;gap:8px">
+        <div v-if="auth.hasPermission('settings.templates.write')" style="display:flex;gap:8px">
           <button v-if="bpIsCustom" class="btn btn-ghost btn-sm" @click="resetBlockPage" :disabled="bpSaving">
             Réinitialiser par défaut
           </button>
@@ -642,7 +642,7 @@ const tabs = computed(() => {
   if (auth.hasPermission('settings.smtp.read')) {
     t.unshift({ key: 'smtp', label: 'Configuration SMTP' })
   }
-  if (auth.hasPermission('settings.smtp.read')) {
+  if (auth.hasPermission('settings.templates.read')) {
     t.push({ key: 'email_template', label: 'Template e-mail' })
     t.push({ key: 'block_page', label: 'Page de blocage' })
   }
@@ -830,7 +830,7 @@ async function refreshPreview() {
 }
 
 async function loadTemplate() {
-  if (!auth.hasPermission('settings.smtp.read')) return
+  if (!auth.hasPermission('settings.templates.read')) return
   try {
     const { data } = await settingsApi.getEmailTemplate()
     tplCode.value     = data.template
@@ -895,7 +895,7 @@ async function refreshBlockPreview() {
 }
 
 async function loadBlockPage() {
-  if (!auth.hasPermission('settings.smtp.read')) return
+  if (!auth.hasPermission('settings.templates.read')) return
   try {
     const { data } = await settingsApi.getBlockPage()
     bpCode.value     = data.template
