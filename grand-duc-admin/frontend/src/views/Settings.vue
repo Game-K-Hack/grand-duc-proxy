@@ -285,7 +285,7 @@
               : 'background:rgba(46,160,67,.1);border-color:var(--green);color:var(--green)'
           }`">
           <strong>{{ syncResult.error ? 'Erreur' : 'Synchronisation réussie' }}</strong>
-          <span v-if="!syncResult.error"> — {{ syncResult.created }} créés, {{ syncResult.updated }} mis à jour, {{ syncResult.skipped }} ignorés</span>
+          <span v-if="!syncResult.error"> — {{ syncResult.created }} créés, {{ syncResult.updated }} mis à jour, {{ syncResult.skipped }} ignorés{{ syncResult.groups_created ? `, ${syncResult.groups_created} groupes créés` : '' }}</span>
           <span v-else> — {{ syncResult.error }}</span>
         </div>
       </transition>
@@ -341,6 +341,22 @@
           <div>
             <label class="form-label">Intervalle de synchronisation (minutes)</label>
             <input v-model.number="rmmForm.sync_interval_minutes" class="form-input" type="number" min="5" max="1440" />
+          </div>
+
+          <div>
+            <label class="form-label">Auto-assignation aux groupes</label>
+            <select v-model="rmmForm.auto_group_by" class="form-input">
+              <option value="none">Désactivée</option>
+              <option value="client">Par Client</option>
+              <option value="site">Par Site</option>
+              <option value="client_site">Par Client — Site</option>
+            </select>
+            <div style="margin-top:4px;font-size:11px;color:var(--text-muted)">
+              <template v-if="rmmForm.auto_group_by === 'client'">Les agents seront assignés à un groupe portant le nom de leur Client RMM.</template>
+              <template v-else-if="rmmForm.auto_group_by === 'site'">Les agents seront assignés à un groupe portant le nom de leur Site RMM.</template>
+              <template v-else-if="rmmForm.auto_group_by === 'client_site'">Les agents seront assignés à un groupe « Client — Site ».</template>
+              <template v-else>Les agents ne seront pas assignés automatiquement à des groupes.</template>
+            </div>
           </div>
 
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
@@ -538,7 +554,7 @@ const deleteTarget  = ref(null)
 
 const emptyRmmForm = () => ({
   name: '', type: '', url: '', api_key: '', api_secret: '',
-  sync_interval_minutes: 60, enabled: true,
+  sync_interval_minutes: 60, auto_group_by: 'none', enabled: true,
 })
 const rmmForm = ref(emptyRmmForm())
 
@@ -596,6 +612,7 @@ function openEdit(intg) {
     api_key:               intg.api_key,
     api_secret:            intg.api_secret ?? '',
     sync_interval_minutes: intg.sync_interval_minutes,
+    auto_group_by:         intg.auto_group_by ?? 'none',
     enabled:               intg.enabled,
   }
   rmmFormError.value = ''

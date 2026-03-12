@@ -73,6 +73,7 @@ class RmmIntegration(Base):
     api_secret:            Mapped[str | None]  = mapped_column(Text)
     enabled:               Mapped[bool]        = mapped_column(Boolean, default=True)
     sync_interval_minutes: Mapped[int]         = mapped_column(Integer, default=60)
+    auto_group_by:         Mapped[str]         = mapped_column(String(20), default="none")  # none|client|site|client_site
     last_sync_at:          Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_sync_status:      Mapped[str | None]  = mapped_column(Text)
     created_at:            Mapped[datetime]    = mapped_column(DateTime(timezone=True), server_default=func.now())

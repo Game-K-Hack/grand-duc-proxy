@@ -56,6 +56,7 @@ async def _ensure_columns():
     from sqlalchemy import text
     migrations = [
         ("client_users", "logged_user", "ALTER TABLE client_users ADD COLUMN logged_user TEXT"),
+        ("rmm_integrations", "auto_group_by", "ALTER TABLE rmm_integrations ADD COLUMN auto_group_by VARCHAR(20) DEFAULT 'none'"),
     ]
     for table, col, sql in migrations:
         try:

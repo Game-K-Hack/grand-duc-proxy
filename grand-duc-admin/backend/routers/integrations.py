@@ -18,7 +18,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, AsyncSessionLocal
-from models import ClientUser, RmmIntegration
+from models import ClientUser, ClientGroup, ClientUserGroups, RmmIntegration
 from security import require_permission
 from models import User
 
@@ -35,6 +35,8 @@ class AgentData:
     hostname:    str
     os:          str
     logged_user: str = ""
+    client_name: str = ""
+    site_name:   str = ""
 
 
 # ── Adaptateurs RMM ────────────────────────────────────────────────────────────
@@ -106,6 +108,8 @@ async def _fetch_tactical(intg: RmmIntegration) -> list[AgentData]:
             hostname=a.get("hostname", ""),
             os=a.get("operating_system", ""),
             logged_user=a.get("logged_username") or a.get("last_logged_in_user") or "",
+            client_name=a.get("client_name") or a.get("client", "") or "",
+            site_name=a.get("site_name") or a.get("site", "") or "",
         ))
     return results
 
@@ -225,6 +229,19 @@ ADAPTERS = {
 }
 
 
+def _build_group_name(mode: str, agent: AgentData) -> str | None:
+    """Construit le nom du groupe selon le mode d'auto-assignation."""
+    if mode == "client" and agent.client_name:
+        return agent.client_name
+    elif mode == "site" and agent.site_name:
+        return agent.site_name
+    elif mode == "client_site":
+        if agent.client_name and agent.site_name:
+            return f"{agent.client_name} — {agent.site_name}"
+        return agent.client_name or agent.site_name or None
+    return None
+
+
 # ── Logique de synchronisation ─────────────────────────────────────────────────
 
 async def run_sync(integration_id: int) -> dict:
@@ -260,19 +277,30 @@ async def run_sync(integration_id: int) -> dict:
 
         now = datetime.now(timezone.utc)
         created = updated = skipped = 0
+        groups_created = 0
+        auto_group = intg.auto_group_by or "none"
+
+        # ── Pré-charger les groupes existants pour l'auto-assignation ────
+        group_cache: dict[str, int] = {}  # nom → id
+        if auto_group != "none":
+            existing_groups = (await db.execute(
+                select(ClientGroup.id, ClientGroup.name)
+            )).all()
+            group_cache = {g.name: g.id for g in existing_groups}
 
         for agent in agents:
             existing = (await db.execute(
                 select(ClientUser).where(ClientUser.ip_address == agent.ip)
             )).scalar_one_or_none()
 
+            user_id: int | None = None
+
             if existing:
+                user_id = existing.id
                 if existing.source == "manual":
-                    # Ne pas écraser les entrées manuelles, mais mettre à jour last_seen
                     existing.last_seen_rmm = now
                     skipped += 1
                 else:
-                    # Mettre à jour l'entrée RMM
                     existing.hostname = agent.hostname
                     existing.os = agent.os
                     existing.logged_user = agent.logged_user or existing.logged_user
@@ -283,7 +311,7 @@ async def run_sync(integration_id: int) -> dict:
                         existing.label = agent.hostname
                     updated += 1
             else:
-                db.add(ClientUser(
+                new_user = ClientUser(
                     ip_address=agent.ip,
                     label=agent.hostname,
                     hostname=agent.hostname,
@@ -293,17 +321,46 @@ async def run_sync(integration_id: int) -> dict:
                     rmm_agent_id=agent.agent_id,
                     last_seen_rmm=now,
                     rmm_integration_id=integration_id,
-                ))
+                )
+                db.add(new_user)
+                await db.flush()  # pour obtenir new_user.id
+                user_id = new_user.id
                 created += 1
 
-        status_msg = f"OK — {created} créés, {updated} mis à jour, {skipped} ignorés (manual)"
+            # ── Auto-assignation au groupe ────────────────────────────────
+            if auto_group != "none" and user_id:
+                group_name = _build_group_name(auto_group, agent)
+                if group_name:
+                    # Créer le groupe s'il n'existe pas
+                    if group_name not in group_cache:
+                        grp = ClientGroup(name=group_name, description=f"Auto-créé depuis {intg.name}")
+                        db.add(grp)
+                        await db.flush()
+                        group_cache[group_name] = grp.id
+                        groups_created += 1
+
+                    gid = group_cache[group_name]
+                    # Vérifier si l'association existe déjà
+                    link = (await db.execute(
+                        select(ClientUserGroups).where(
+                            ClientUserGroups.user_id == user_id,
+                            ClientUserGroups.group_id == gid,
+                        )
+                    )).scalar_one_or_none()
+                    if not link:
+                        db.add(ClientUserGroups(user_id=user_id, group_id=gid))
+
+        parts = [f"{created} créés", f"{updated} mis à jour", f"{skipped} ignorés"]
+        if groups_created:
+            parts.append(f"{groups_created} groupes créés")
+        status_msg = f"OK — {', '.join(parts)}"
         await db.execute(
             update(RmmIntegration)
             .where(RmmIntegration.id == integration_id)
             .values(last_sync_at=now, last_sync_status=status_msg)
         )
         await db.commit()
-        return {"created": created, "updated": updated, "skipped": skipped}
+        return {"created": created, "updated": updated, "skipped": skipped, "groups_created": groups_created}
 
 
 # ── Boucle de synchronisation automatique ─────────────────────────────────────
@@ -358,6 +415,7 @@ class IntegrationIn(BaseModel):
     api_secret:            Optional[str] = None
     enabled:               bool = True
     sync_interval_minutes: int  = 60
+    auto_group_by:         str  = "none"  # none|client|site|client_site
 
 
 class IntegrationUpdate(BaseModel):
@@ -367,6 +425,7 @@ class IntegrationUpdate(BaseModel):
     api_secret:            Optional[str]  = None
     enabled:               Optional[bool] = None
     sync_interval_minutes: Optional[int]  = None
+    auto_group_by:         Optional[str]  = None
 
 
 class IntegrationOut(BaseModel):
@@ -378,6 +437,7 @@ class IntegrationOut(BaseModel):
     api_secret:            Optional[str]
     enabled:               bool
     sync_interval_minutes: int
+    auto_group_by:         str
     last_sync_at:          Optional[str]
     last_sync_status:      Optional[str]
     created_at:            str
@@ -388,6 +448,7 @@ def _out(i: RmmIntegration) -> IntegrationOut:
         id=i.id, name=i.name, type=i.type, url=i.url,
         api_key=i.api_key, api_secret=i.api_secret,
         enabled=i.enabled, sync_interval_minutes=i.sync_interval_minutes,
+        auto_group_by=i.auto_group_by or "none",
         last_sync_at=i.last_sync_at.isoformat() if i.last_sync_at else None,
         last_sync_status=i.last_sync_status,
         created_at=i.created_at.isoformat(),
