@@ -87,8 +87,8 @@
               stroke="var(--border)" stroke-width="1"
             />
             <text
-              :x="PAD_L-8" :y="yScale(tick)+4"
-              text-anchor="end" font-size="10" fill="var(--text-muted)"
+              :x="PAD_L-6" :y="yScale(tick)+3"
+              text-anchor="end" font-size="8" fill="var(--text-muted)"
             >{{ tick }}</text>
           </g>
 
@@ -98,13 +98,13 @@
 
           <!-- Courbes -->
           <polyline :points="linePath(traffic.map(p=>p.total))"
-            fill="none" stroke="var(--blue)"  stroke-width="2"
+            fill="none" stroke="var(--blue)"  stroke-width="1.5"
             stroke-linejoin="round" stroke-linecap="round"/>
           <polyline :points="linePath(traffic.map(p=>p.allowed))"
-            fill="none" stroke="var(--green)" stroke-width="1.5"
-            stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="4 2"/>
+            fill="none" stroke="var(--green)" stroke-width="1"
+            stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="3 2"/>
           <polyline :points="linePath(traffic.map(p=>p.blocked))"
-            fill="none" stroke="var(--red)"   stroke-width="1.5"
+            fill="none" stroke="var(--red)"   stroke-width="1"
             stroke-linejoin="round" stroke-linecap="round"/>
 
           <!-- Points + zones interactives -->
@@ -116,13 +116,13 @@
               @mouseenter="hoverIdx=i" @mouseleave="hoverIdx=null"
             />
             <circle :cx="xPos(i)" :cy="yScale(pt.total)"
-              :r="hoverIdx===i?5:3"
-              fill="var(--blue)" stroke="var(--surface)" stroke-width="1.5"
+              :r="hoverIdx===i?3.5:2"
+              fill="var(--blue)" stroke="var(--surface)" stroke-width="1"
               style="transition:r .1s;pointer-events:none"/>
             <circle v-if="pt.blocked>0"
               :cx="xPos(i)" :cy="yScale(pt.blocked)"
-              :r="hoverIdx===i?4:2.5"
-              fill="var(--red)" stroke="var(--surface)" stroke-width="1.5"
+              :r="hoverIdx===i?3:1.5"
+              fill="var(--red)" stroke="var(--surface)" stroke-width="1"
               style="transition:r .1s;pointer-events:none"/>
           </g>
 
@@ -131,7 +131,7 @@
             v-for="(pt, i) in traffic" :key="'lx'+i"
             v-show="showXLabel(i)"
             :x="xPos(i)" :y="H-4"
-            text-anchor="middle" font-size="10" fill="var(--text-muted)"
+            text-anchor="middle" font-size="8" fill="var(--text-muted)"
           >{{ pt.label }}</text>
 
           <!-- Ligne de base -->
@@ -144,22 +144,22 @@
               :x1="xPos(hoverIdx)" :y1="PAD_T"
               :x2="xPos(hoverIdx)" :y2="PAD_T+CHART_H"
               stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="3 2"/>
-            <g :transform="`translate(${tooltipX(hoverIdx)},${PAD_T+8})`">
-              <rect x="0" y="0" width="128" height="76" rx="6"
-                fill="var(--surface2)" stroke="var(--border)" stroke-width="1"/>
-              <text x="10" y="17" font-size="11" font-weight="600" fill="var(--text)">
+            <g :transform="`translate(${tooltipX(hoverIdx)},${PAD_T+6})`">
+              <rect x="0" y="0" width="100" height="60" rx="4"
+                fill="var(--surface2)" stroke="var(--border)" stroke-width=".5"/>
+              <text x="8" y="13" font-size="8" font-weight="600" fill="var(--text)">
                 {{ traffic[hoverIdx].label }}
               </text>
-              <circle cx="10" cy="31" r="4" fill="var(--blue)"/>
-              <text x="22" y="35" font-size="11" fill="var(--text)">
+              <circle cx="8" cy="24" r="3" fill="var(--blue)"/>
+              <text x="16" y="27" font-size="8" fill="var(--text)">
                 Total : {{ traffic[hoverIdx].total }}
               </text>
-              <circle cx="10" cy="48" r="4" fill="var(--green)"/>
-              <text x="22" y="52" font-size="11" fill="var(--text)">
+              <circle cx="8" cy="37" r="3" fill="var(--green)"/>
+              <text x="16" y="40" font-size="8" fill="var(--text)">
                 OK : {{ traffic[hoverIdx].allowed }}
               </text>
-              <circle cx="10" cy="65" r="4" fill="var(--red)"/>
-              <text x="22" y="69" font-size="11" fill="var(--text)">
+              <circle cx="8" cy="50" r="3" fill="var(--red)"/>
+              <text x="16" y="53" font-size="8" fill="var(--text)">
                 Bloquées : {{ traffic[hoverIdx].blocked }}
               </text>
             </g>
@@ -240,12 +240,12 @@ const hoverIdx    = ref(null)
 let   autoRefresh = null
 
 // ── Dimensions SVG ────────────────────────────────────────────────────────────
-const W       = 900
-const H       = 220
-const PAD_L   = 42
-const PAD_R   = 16
-const PAD_T   = 14
-const PAD_B   = 28
+const W       = 960
+const H       = 300
+const PAD_L   = 38
+const PAD_R   = 12
+const PAD_T   = 12
+const PAD_B   = 22
 const CHART_H = H - PAD_T - PAD_B
 const CHART_W = W - PAD_L - PAD_R
 
@@ -303,7 +303,7 @@ function showXLabel(i) {
 
 function tooltipX(i) {
   const x = xPos(i)
-  return x + 140 > W ? x - 138 : x + 10
+  return x + 112 > W ? x - 108 : x + 8
 }
 
 // ── Chargement ────────────────────────────────────────────────────────────────
