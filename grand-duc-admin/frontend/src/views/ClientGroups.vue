@@ -10,7 +10,7 @@
       <div class="card" style="padding:0;overflow:hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)">
           <div style="font-weight:600;font-size:13px">Groupes</div>
-          <button v-if="auth.isAdmin" class="btn btn-primary btn-sm" @click="openCreate">
+          <button v-if="auth.hasPermission('client_groups.write')" class="btn btn-primary btn-sm" @click="openCreate">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
@@ -35,7 +35,7 @@
                 · {{ g.rule_count }} règle{{ g.rule_count !== 1 ? 's' : '' }}
               </div>
             </div>
-            <div v-if="selected?.id === g.id && auth.isAdmin" style="display:flex;gap:3px;flex-shrink:0;margin-left:6px">
+            <div v-if="selected?.id === g.id && auth.hasPermission('client_groups.write')" style="display:flex;gap:3px;flex-shrink:0;margin-left:6px">
               <button class="btn btn-ghost btn-sm btn-icon" @click.stop="openEdit(g)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
@@ -62,7 +62,7 @@
         <div style="padding:12px 18px;border-bottom:1px solid var(--border)">
           <div style="font-weight:600;font-size:14px;margin-bottom:2px">{{ selected.name }}</div>
           <div style="font-size:12px;color:var(--text-muted)">
-            {{ selected.description.length > 0 ? selected.description : 'Activez les règles à appliquer aux membres de ce groupe.' }}
+            {{ selected.description ? selected.description : 'Activez les règles à appliquer aux membres de ce groupe.' }}
           </div>
         </div>
 
@@ -94,7 +94,7 @@
               >
                 <!-- Toggle appliquer/ignorer cette règle dans le groupe -->
                 <td style="text-align:center">
-                  <label class="toggle-wrap" v-if="auth.isAdmin">
+                  <label class="toggle-wrap" v-if="auth.hasPermission('client_groups.write')">
                     <input
                       type="checkbox"
                       class="toggle-input"
@@ -104,6 +104,10 @@
                     />
                     <span class="toggle-slider"></span>
                   </label>
+                  <span v-else
+                    :style="`display:inline-block;width:8px;height:8px;border-radius:50%;background:${row.active ? 'var(--green)' : 'var(--border)'}`"
+                    :title="row.active ? 'Appliquée' : 'Non appliquée'"
+                  ></span>
                 </td>
 
                 <!-- Pattern + description -->

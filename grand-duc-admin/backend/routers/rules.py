@@ -7,7 +7,7 @@ from typing import Optional
 
 from database import get_db
 from models   import FilterRule
-from security import get_current_user, require_admin
+from security import require_permission
 from models   import User
 
 router = APIRouter()
@@ -78,7 +78,7 @@ async def list_rules(
     limit:   int = 100,
     search:  str = "",
     db:      AsyncSession = Depends(get_db),
-    _user:   User = Depends(get_current_user),
+    _user:   User = Depends(require_permission("rules.read")),
 ):
     q = select(FilterRule)
     if search:
@@ -97,7 +97,7 @@ async def list_rules(
 async def create_rule(
     body:  RuleIn,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("rules.write")),
 ):
     rule = FilterRule(**body.model_dump())
     db.add(rule)
@@ -111,7 +111,7 @@ async def update_rule(
     rule_id: int,
     body:    RuleIn,
     db:      AsyncSession = Depends(get_db),
-    _user:   User = Depends(require_admin),
+    _user:   User = Depends(require_permission("rules.write")),
 ):
     result = await db.execute(select(FilterRule).where(FilterRule.id == rule_id))
     rule   = result.scalar_one_or_none()
@@ -129,7 +129,7 @@ async def update_rule(
 async def toggle_rule(
     rule_id: int,
     db:      AsyncSession = Depends(get_db),
-    _user:   User = Depends(require_admin),
+    _user:   User = Depends(require_permission("rules.write")),
 ):
     result = await db.execute(select(FilterRule).where(FilterRule.id == rule_id))
     rule   = result.scalar_one_or_none()
@@ -145,7 +145,7 @@ async def toggle_rule(
 async def delete_rule(
     rule_id: int,
     db:      AsyncSession = Depends(get_db),
-    _user:   User = Depends(require_admin),
+    _user:   User = Depends(require_permission("rules.write")),
 ):
     result = await db.execute(select(FilterRule).where(FilterRule.id == rule_id))
     if not result.scalar_one_or_none():

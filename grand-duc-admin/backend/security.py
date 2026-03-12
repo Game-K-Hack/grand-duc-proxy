@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import json
+
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, Query, status
@@ -9,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config   import settings
 from database import get_db
-from models   import User
+from models   import User, Role
 
 pwd_context    = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme  = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -69,3 +71,48 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Droits administrateur requis")
     return current_user
+
+
+# ── Permissions granulaires ──────────────────────────────────────────────────
+
+async def load_user_permissions(user: User, db: AsyncSession) -> dict[str, bool]:
+    """Charge les permissions du rôle de l'utilisateur (avec cache requête)."""
+    if hasattr(user, "_perms_cache"):
+        return user._perms_cache
+    perms: dict[str, bool] = {}
+    if user.role_id:
+        result = await db.execute(select(Role).where(Role.id == user.role_id))
+        role = result.scalar_one_or_none()
+        if role:
+            perms = json.loads(role.permissions)
+    user._perms_cache = perms
+    return perms
+
+
+def require_permission(*perm_keys: str):
+    """Factory : renvoie une dépendance FastAPI vérifiant les permissions."""
+    async def _check(
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> User:
+        perms = await load_user_permissions(current_user, db)
+        for key in perm_keys:
+            if not perms.get(key):
+                raise HTTPException(status_code=403, detail="Permission insuffisante")
+        return current_user
+    return _check
+
+
+def require_permission_query(*perm_keys: str):
+    """Variante pour les endpoints SSE (token en query param)."""
+    async def _check(
+        token: str = Query(...),
+        db: AsyncSession = Depends(get_db),
+    ) -> User:
+        user = await _decode_user(token, db)
+        perms = await load_user_permissions(user, db)
+        for key in perm_keys:
+            if not perms.get(key):
+                raise HTTPException(status_code=403, detail="Permission insuffisante")
+        return user
+    return _check

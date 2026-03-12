@@ -14,7 +14,7 @@
       <!-- En-tête -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)">
         <div style="font-weight:600;font-size:13px">{{ entries.length }} exception{{ entries.length !== 1 ? 's' : '' }}</div>
-        <button v-if="auth.isAdmin" class="btn btn-primary btn-sm" @click="openAdd">
+        <button v-if="auth.hasPermission('tls_bypass.write')" class="btn btn-primary btn-sm" @click="openAdd">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
@@ -41,7 +41,7 @@
               </td>
               <td style="color:var(--text-muted);font-size:12px">{{ e.description || '—' }}</td>
               <td>
-                <button v-if="auth.isAdmin" class="btn btn-danger btn-sm btn-icon" @click="confirmDelete(e)">
+                <button v-if="auth.hasPermission('tls_bypass.write')" class="btn btn-danger btn-sm btn-icon" @click="confirmDelete(e)">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
                     <path d="M10 11v6M14 11v6M9 6V4h6v2"/>

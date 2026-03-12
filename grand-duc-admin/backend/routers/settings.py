@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import AppSetting, FilterRule, NotificationPref, NotificationRuleWatch, User
-from security import get_current_user, require_admin
+from security import get_current_user, require_permission
 from services.email import EVENT_LABELS, _get_smtp_config, _send_async, _html_template
 
 router = APIRouter()
@@ -71,7 +71,7 @@ async def _read_smtp(db: AsyncSession) -> dict:
 @router.get("/smtp", response_model=SmtpConfigOut)
 async def get_smtp(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("settings.smtp.read")),
 ):
     cfg = await _read_smtp(db)
     return SmtpConfigOut(
@@ -89,7 +89,7 @@ async def get_smtp(
 async def update_smtp(
     body:  SmtpConfig,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("settings.smtp.write")),
 ):
     data = {
         "smtp_host": body.host,
@@ -117,7 +117,7 @@ async def update_smtp(
 async def test_smtp(
     body:  TestEmailIn,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("settings.smtp.write")),
 ):
     cfg = await _get_smtp_config()
     if not cfg:

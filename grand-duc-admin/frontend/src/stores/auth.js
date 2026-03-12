@@ -10,11 +10,19 @@ export const useAuthStore = defineStore('auth', {
   }),
 
   getters: {
-    isLoggedIn: s => !!s.token,
-    isAdmin:    s => s.user?.role === 'admin',
+    isLoggedIn:   s => !!s.token,
+    isAdmin:      s => s.user?.role === 'admin',
+    permissions:  s => s.user?.permissions || {},
   },
 
   actions: {
+    hasPermission(key) {
+      return !!this.permissions[key]
+    },
+    hasAnyPermission(...keys) {
+      return keys.some(k => !!this.permissions[k])
+    },
+
     async login(username, password) {
       this.loading = true
       this.error   = null

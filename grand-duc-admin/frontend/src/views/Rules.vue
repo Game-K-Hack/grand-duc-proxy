@@ -2,7 +2,7 @@
   <div>
     <div class="page-header">
       <h1 class="page-title">Règles de filtrage</h1>
-      <button v-if="auth.isAdmin" class="btn btn-primary" @click="openCreate">
+      <button v-if="auth.hasPermission('rules.write')" class="btn btn-primary" @click="openCreate">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
@@ -32,7 +32,7 @@
               <th style="width:90px">Action</th>
               <th>Description</th>
               <th style="width:80px">Actif</th>
-              <th style="width:110px" v-if="auth.isAdmin">Actions</th>
+              <th style="width:110px" v-if="auth.hasPermission('rules.write')">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -44,7 +44,7 @@
               <td><span :class="rule.action === 'block' ? 'badge badge-block' : 'badge badge-allow'">{{ rule.action === 'block' ? 'bloqué' : 'autorisé' }}</span></td>
               <td style="color:var(--text-muted)">{{ rule.description || '—' }}</td>
               <td>
-                <label class="toggle" v-if="auth.isAdmin">
+                <label class="toggle" v-if="auth.hasPermission('rules.write')">
                   <input type="checkbox" :checked="rule.enabled" @change="toggle(rule)" />
                   <span class="toggle-slider"></span>
                 </label>
@@ -52,7 +52,7 @@
                   {{ rule.enabled ? 'Oui' : 'Non' }}
                 </span>
               </td>
-              <td v-if="auth.isAdmin" style="display:flex;gap:6px;padding:8px 14px">
+              <td v-if="auth.hasPermission('rules.write')" style="display:flex;gap:6px;padding:8px 14px">
                 <button class="btn btn-ghost btn-sm btn-icon" title="Modifier" @click="openEdit(rule)">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>

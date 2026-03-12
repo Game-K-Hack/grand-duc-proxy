@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config   import settings
 from database import get_db
 from models   import CertificateHistory, User
-from security import get_current_user, require_admin
+from security import require_permission
 
 router = APIRouter()
 
@@ -122,7 +122,7 @@ class HistoryEntryOut(BaseModel):
 
 
 @router.get("/info", response_model=CertInfoOut)
-async def get_cert_info(_user: User = Depends(get_current_user)):
+async def get_cert_info(_user: User = Depends(require_permission("certificates.read"))):
     cert = _read_cert()
     if cert is None:
         return CertInfoOut(
@@ -147,7 +147,7 @@ async def download_ca():
 @router.post("/generate", response_model=CertInfoOut)
 async def generate_cert(
     db:   AsyncSession = Depends(get_db),
-    user: User = Depends(require_admin),
+    user: User = Depends(require_permission("certificates.write")),
 ):
     CERT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -210,7 +210,7 @@ async def import_cert(
     cert_file: UploadFile = File(..., description="Certificat CA (.crt PEM)"),
     key_file:  UploadFile = File(..., description="Clé privée (.key PKCS#8 DER)"),
     db:        AsyncSession = Depends(get_db),
-    user:      User = Depends(require_admin),
+    user:      User = Depends(require_permission("certificates.write")),
 ):
     cert_pem = await cert_file.read()
     key_der  = await key_file.read()
@@ -246,7 +246,7 @@ async def import_cert(
 @router.get("/history", response_model=list[HistoryEntryOut])
 async def get_history(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_permission("certificates.read")),
 ):
     result = await db.execute(
         select(CertificateHistory)

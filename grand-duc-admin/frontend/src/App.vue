@@ -36,52 +36,50 @@
           Journaux d'accès
         </router-link>
 
-        <template v-if="auth.isAdmin">
-          <router-link class="nav-item" :class="{ active: $route.name === 'ProxyLogs' }" to="/proxy-logs">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
-            </svg>
-            Logs proxy
-          </router-link>
-        </template>
+        <router-link v-if="auth.hasPermission('proxy_logs.read')" class="nav-item" :class="{ active: $route.name === 'ProxyLogs' }" to="/proxy-logs">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+          </svg>
+          Logs proxy
+        </router-link>
 
         <div class="nav-section" style="margin-top:8px">Filtrage</div>
 
-        <router-link class="nav-item" :class="{ active: $route.name === 'Rules' }" to="/rules">
+        <router-link v-if="auth.hasPermission('rules.read')" class="nav-item" :class="{ active: $route.name === 'Rules' }" to="/rules">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
           Règles
         </router-link>
 
-        <template v-if="auth.isAdmin">
-          <router-link class="nav-item" :class="{ active: $route.name === 'ClientGroups' }" to="/client-groups">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
-            </svg>
-            Groupes
-          </router-link>
+        <router-link v-if="auth.hasPermission('client_groups.read')" class="nav-item" :class="{ active: $route.name === 'ClientGroups' }" to="/client-groups">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+          </svg>
+          Groupes
+        </router-link>
 
-          <router-link class="nav-item" :class="{ active: $route.name === 'ClientUsers' }" to="/client-users">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="3" width="20" height="14" rx="2"/>
-              <path d="M8 21h8M12 17v4"/>
-            </svg>
-            Utilisateurs
-          </router-link>
+        <router-link v-if="auth.hasPermission('client_users.read')" class="nav-item" :class="{ active: $route.name === 'ClientUsers' }" to="/client-users">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <path d="M8 21h8M12 17v4"/>
+          </svg>
+          Utilisateurs
+        </router-link>
 
-          <router-link class="nav-item" :class="{ active: $route.name === 'TestAccess' }" to="/test-access">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 7L6.82 21.18a2.83 2.83 0 0 1-3.99-.01a2.83 2.83 0 0 1 0-4L17 3m-1-1l6 6m-10 8H4"/>
-            </svg>
-            Test d'accès
-          </router-link>
+        <router-link v-if="auth.hasPermission('test_access.use')" class="nav-item" :class="{ active: $route.name === 'TestAccess' }" to="/test-access">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 7L6.82 21.18a2.83 2.83 0 0 1-3.99-.01a2.83 2.83 0 0 1 0-4L17 3m-1-1l6 6m-10 8H4"/>
+          </svg>
+          Test d'accès
+        </router-link>
 
+        <template v-if="auth.hasAnyPermission('tls_bypass.read', 'certificates.read', 'killswitch.read', 'users.read', 'roles.read')">
           <div class="nav-section" style="margin-top:8px">Administration</div>
 
-          <router-link class="nav-item" :class="{ active: $route.name === 'TlsBypass' }" to="/tls-bypass">
+          <router-link v-if="auth.hasPermission('tls_bypass.read')" class="nav-item" :class="{ active: $route.name === 'TlsBypass' }" to="/tls-bypass">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
               <path d="M4.93 4.93l14.14 14.14"/>
@@ -89,7 +87,7 @@
             Exceptions
           </router-link>
 
-          <router-link class="nav-item" :class="{ active: $route.name === 'Certificates' }" to="/certificates">
+          <router-link v-if="auth.hasPermission('certificates.read')" class="nav-item" :class="{ active: $route.name === 'Certificates' }" to="/certificates">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
               <path d="M7 11V7a5 5 0 0110 0v4"/>
@@ -97,7 +95,7 @@
             Certificats
           </router-link>
 
-          <router-link class="nav-item" :class="{ active: $route.name === 'Killswitch' }" to="/killswitch">
+          <router-link v-if="auth.hasPermission('killswitch.read')" class="nav-item" :class="{ active: $route.name === 'Killswitch' }" to="/killswitch">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
               <line x1="12" y1="2" x2="12" y2="12"/>
@@ -105,12 +103,19 @@
             Killswitch
           </router-link>
 
-          <router-link class="nav-item" :class="{ active: $route.name === 'Users' }" to="/users">
+          <router-link v-if="auth.hasPermission('users.read')" class="nav-item" :class="{ active: $route.name === 'Users' }" to="/users">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="8" r="4"/>
               <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
             </svg>
             Comptes
+          </router-link>
+
+          <router-link v-if="auth.hasPermission('roles.read')" class="nav-item" :class="{ active: $route.name === 'Roles' }" to="/roles">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+            </svg>
+            Rôles
           </router-link>
         </template>
 

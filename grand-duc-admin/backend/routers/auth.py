@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from database import get_db
 from models   import User
-from security import verify_password, create_access_token, get_current_user
+from security import verify_password, create_access_token, get_current_user, load_user_permissions
 
 router = APIRouter()
 
@@ -20,10 +20,12 @@ class TokenResponse(BaseModel):
 
 
 class MeResponse(BaseModel):
-    id:       int
-    username: str
-    email:    str | None
-    role:     str
+    id:          int
+    username:    str
+    email:       str | None
+    role:        str
+    role_id:     int | None = None
+    permissions: dict[str, bool] = {}
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -53,10 +55,16 @@ async def login(
 
 
 @router.get("/me", response_model=MeResponse)
-async def me(current_user: User = Depends(get_current_user)):
+async def me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    perms = await load_user_permissions(current_user, db)
     return MeResponse(
         id=current_user.id,
         username=current_user.username,
         email=current_user.email,
         role=current_user.role,
+        role_id=current_user.role_id,
+        permissions=perms,
     )

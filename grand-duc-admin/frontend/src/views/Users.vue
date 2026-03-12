@@ -2,7 +2,7 @@
   <div>
     <div class="page-header">
       <h1 class="page-title">Utilisateurs</h1>
-      <button class="btn btn-primary" @click="openCreate">
+      <button v-if="auth.hasPermission('users.write')" class="btn btn-primary" @click="openCreate">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
@@ -21,19 +21,19 @@
               <th>Statut</th>
               <th>Dernière connexion</th>
               <th>Créé le</th>
-              <th style="width:100px">Actions</th>
+              <th v-if="auth.hasPermission('users.write')" style="width:100px">Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-if="loading"><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Chargement…</td></tr>
+            <tr v-if="loading"><td :colspan="auth.hasPermission('users.write') ? 7 : 6" style="text-align:center;padding:24px;color:var(--text-muted)">Chargement…</td></tr>
             <tr v-for="u in users" :key="u.id">
               <td style="font-weight:600">{{ u.username }}</td>
               <td style="color:var(--text-muted)">{{ u.email || '—' }}</td>
-              <td><span :class="u.role === 'admin' ? 'badge badge-admin' : 'badge badge-viewer'">{{ u.role }}</span></td>
+              <td><span class="badge badge-role">{{ u.role_name }}</span></td>
               <td><span :class="u.enabled ? 'badge badge-on' : 'badge badge-off'">{{ u.enabled ? 'Actif' : 'Désactivé' }}</span></td>
               <td style="color:var(--text-muted);font-size:12px">{{ u.last_login ? fmtDate(u.last_login) : 'Jamais' }}</td>
               <td style="color:var(--text-muted);font-size:12px">{{ fmtDate(u.created_at) }}</td>
-              <td style="display:flex;gap:6px;padding:8px 14px">
+              <td v-if="auth.hasPermission('users.write')" style="display:flex;gap:6px;padding:8px 14px">
                 <button class="btn btn-ghost btn-sm btn-icon" @click="openEdit(u)" title="Modifier">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
@@ -84,9 +84,8 @@
           </div>
           <div class="form-group">
             <label class="form-label">Rôle</label>
-            <select v-model="form.role" class="form-select">
-              <option value="viewer">viewer — Lecture seule</option>
-              <option value="admin">admin — Administrateur</option>
+            <select v-model="form.role_id" class="form-select">
+              <option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</option>
             </select>
           </div>
         </div>
@@ -126,11 +125,12 @@
 
 <script setup>
 import { ref, onMounted }   from 'vue'
-import { usersApi }         from '@/api'
+import { usersApi, rolesApi } from '@/api'
 import { useAuthStore }     from '@/stores/auth'
 
 const auth          = useAuthStore()
 const users         = ref([])
+const roles         = ref([])
 const loading       = ref(false)
 const saving        = ref(false)
 const showModal     = ref(false)
@@ -140,13 +140,20 @@ const formError     = ref('')
 const formSuccess   = ref('')
 const currentUserId = ref(null)
 
-const form = ref({ username: '', email: '', password: '', role: 'viewer', enabled: true })
+const form = ref({ username: '', email: '', password: '', role_id: null, enabled: true })
 
 function fmtDate(iso) {
   return new Date(iso).toLocaleString('fr-FR', {
     day: '2-digit', month: '2-digit', year: '2-digit',
     hour: '2-digit', minute: '2-digit',
   })
+}
+
+async function loadRoles() {
+  try {
+    const { data } = await rolesApi.list()
+    roles.value = data
+  } catch { /* ignore */ }
 }
 
 async function load() {
@@ -161,7 +168,8 @@ async function load() {
 
 function openCreate() {
   editingUser.value = null
-  form.value        = { username: '', email: '', password: '', role: 'viewer', enabled: true }
+  const defaultRole = roles.value.find(r => r.name === 'Lecteur') || roles.value[0]
+  form.value        = { username: '', email: '', password: '', role_id: defaultRole?.id, enabled: true }
   formError.value   = ''
   formSuccess.value = ''
   showModal.value   = true
@@ -169,7 +177,7 @@ function openCreate() {
 
 function openEdit(u) {
   editingUser.value = u
-  form.value        = { username: u.username, email: u.email || '', password: '', role: u.role, enabled: u.enabled }
+  form.value        = { username: u.username, email: u.email || '', password: '', role_id: u.role_id, enabled: u.enabled }
   formError.value   = ''
   formSuccess.value = ''
   showModal.value   = true
@@ -181,7 +189,7 @@ async function save() {
   saving.value      = true
   try {
     if (editingUser.value) {
-      const payload = { email: form.value.email, role: form.value.role, enabled: form.value.enabled }
+      const payload = { email: form.value.email, role_id: form.value.role_id, enabled: form.value.enabled }
       if (form.value.password) payload.password = form.value.password
       await usersApi.update(editingUser.value.id, payload)
     } else {
@@ -214,8 +222,7 @@ async function doDelete() {
 }
 
 onMounted(async () => {
-  await load()
-  // Récupère l'id courant pour désactiver le bouton de suppression de soi-même
+  await Promise.all([load(), loadRoles()])
   const me = users.value.find(u => u.username === auth.user?.username)
   if (me) currentUserId.value = me.id
 })

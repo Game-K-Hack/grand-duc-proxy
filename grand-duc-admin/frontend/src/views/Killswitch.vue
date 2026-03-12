@@ -112,6 +112,7 @@
         </div>
 
         <button
+          v-if="auth.hasPermission('killswitch.write')"
           class="btn"
           :style="active
             ? 'background:var(--green);color:#fff;border-color:var(--green);min-width:200px;font-size:15px;padding:12px 24px'
@@ -212,6 +213,9 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { killswitchApi } from '@/api'
+import { useAuthStore }  from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const active  = ref(false)
 const loading = ref(true)

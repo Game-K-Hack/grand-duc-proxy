@@ -12,8 +12,40 @@ from database import engine, Base
 from config   import settings
 
 logger = logging.getLogger(__name__)
-from routers  import auth, rules, logs, stats, users, client_groups, client_users, tls_bypass, killswitch, certificates, proxy_control, integrations
+from routers  import auth, rules, logs, stats, users, client_groups, client_users, tls_bypass, killswitch, certificates, proxy_control, integrations, roles
 from routers  import settings as settings_router
+
+
+async def _ensure_builtin_roles():
+    """Crée les rôles built-in s'ils n'existent pas encore."""
+    import json
+    from sqlalchemy import select
+    from database import AsyncSessionLocal
+    from models import Role, User
+    from permissions import ADMIN_PERMISSIONS, VIEWER_PERMISSIONS
+
+    async with AsyncSessionLocal() as db:
+        # Rôle Administrateur
+        result = await db.execute(select(Role).where(Role.name == "Administrateur"))
+        if not result.scalar_one_or_none():
+            db.add(Role(name="Administrateur", description="Accès complet à toutes les fonctionnalités",
+                        permissions=json.dumps(ADMIN_PERMISSIONS), is_builtin=True))
+        # Rôle Lecteur
+        result = await db.execute(select(Role).where(Role.name == "Lecteur"))
+        if not result.scalar_one_or_none():
+            db.add(Role(name="Lecteur", description="Consultation en lecture seule",
+                        permissions=json.dumps(VIEWER_PERMISSIONS), is_builtin=True))
+        await db.commit()
+
+        # Assigner un rôle aux utilisateurs qui n'en ont pas
+        admin_role = (await db.execute(select(Role).where(Role.name == "Administrateur"))).scalar_one()
+        viewer_role = (await db.execute(select(Role).where(Role.name == "Lecteur"))).scalar_one()
+
+        orphans = (await db.execute(select(User).where(User.role_id.is_(None)))).scalars().all()
+        for u in orphans:
+            u.role_id = admin_role.id if u.role == "admin" else viewer_role.id
+        if orphans:
+            await db.commit()
 
 
 @asynccontextmanager
@@ -21,6 +53,7 @@ async def lifespan(app: FastAPI):
     # Crée les tables si absentes (utile en dev)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await _ensure_builtin_roles()
     integrations.start_sync_loop()
     _rule_task = asyncio.create_task(_rule_check_loop())
     yield
@@ -69,5 +102,6 @@ app.include_router(certificates.router,   prefix="/api/certificates",  tags=["Ce
 app.include_router(proxy_control.router,  prefix="/api/proxy",         tags=["Proxy"])
 app.include_router(integrations.router,  prefix="/api/integrations",  tags=["Intégrations RMM"])
 app.include_router(settings_router.router, prefix="/api/settings",     tags=["Paramètres"])
+app.include_router(roles.router,           prefix="/api/roles",        tags=["Rôles"])
 
 # uvicorn main:app --reload --port 8000

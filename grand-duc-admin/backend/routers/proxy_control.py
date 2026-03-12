@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config   import settings
 from database import get_db
 from models   import User
-from security import get_current_user, get_current_user_query, require_admin
+from security import require_permission, require_permission_query
 
 router = APIRouter()
 
@@ -89,12 +89,12 @@ class StatusOut(BaseModel):
 
 
 @router.get("/status", response_model=StatusOut)
-async def get_status(_user: User = Depends(get_current_user)):
+async def get_status(_user: User = Depends(require_permission("proxy_logs.read"))):
     return StatusOut(running=_is_running(), log_exists=LOG_FILE.exists())
 
 
 @router.get("/logs")
-async def stream_logs(_user: User = Depends(get_current_user_query)):
+async def stream_logs(_user: User = Depends(require_permission_query("proxy_logs.read"))):
     """SSE — streame les logs du proxy (token via query param pour EventSource)."""
     if not LOG_FILE.exists():
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -110,7 +110,7 @@ async def stream_logs(_user: User = Depends(get_current_user_query)):
 
 
 @router.post("/restart")
-async def restart_proxy(_user: User = Depends(require_admin)):
+async def restart_proxy(_user: User = Depends(require_permission("proxy.restart"))):
     """Tue le processus proxy existant et en démarre un nouveau."""
     was_running = _is_running()
     if was_running:

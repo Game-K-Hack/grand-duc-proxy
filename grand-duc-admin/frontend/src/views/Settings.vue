@@ -18,7 +18,7 @@
     <!-- ══════════════════════════════════════════════════════════════════════ -->
     <!-- Onglet 1 : Configuration SMTP                                         -->
     <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <div v-if="activeTab === 'smtp' && auth.isAdmin">
+    <div v-if="activeTab === 'smtp' && auth.hasPermission('settings.smtp.read')">
 
       <div class="card" style="max-width:560px;padding:24px">
         <div style="font-size:15px;font-weight:700;margin-bottom:4px">Serveur d'envoi (SMTP)</div>
@@ -70,7 +70,7 @@
           </div>
         </div>
 
-        <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
+        <div v-if="auth.hasPermission('settings.smtp.write')" style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
           <button class="btn btn-primary" @click="saveSmtp" :disabled="smtpSaving">
             {{ smtpSaving ? 'Enregistrement…' : 'Enregistrer' }}
           </button>
@@ -146,7 +146,7 @@
                   v-for="r in availRules.filter(r => !watchedIds.has(r.rule_id))"
                   :key="r.rule_id" :value="r.rule_id"
                 >
-                  {{ r.pattern }} ({{ r.action }})
+                  {{ r.pattern }} ({{ r.action }}){{ r.description ? ' — ' + r.description : '' }}
                 </option>
               </select>
               <button class="btn" style="margin-top:6px;font-size:12px;width:100%"
@@ -168,7 +168,9 @@
                   <div style="font-size:12px;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                     {{ r.pattern }}
                   </div>
-                  <div style="font-size:10px;color:var(--text-muted)">action : {{ r.action }}</div>
+                  <div style="font-size:10px;color:var(--text-muted)">
+                    {{ r.action }}{{ r.description ? ' — ' + r.description : '' }}
+                  </div>
                 </div>
                 <button class="btn btn-ghost btn-sm btn-icon" @click="removeRuleWatch(r.rule_id)">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -186,7 +188,7 @@
     <!-- ══════════════════════════════════════════════════════════════════════ -->
     <!-- Onglet 3 : Intégrations RMM (admin uniquement)                        -->
     <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <div v-if="activeTab === 'rmm' && auth.isAdmin">
+    <div v-if="activeTab === 'rmm' && auth.hasPermission('settings.rmm.read')">
 
       <!-- En-tête + bouton ajouter -->
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
@@ -196,7 +198,7 @@
             Synchronisation automatique des agents depuis vos outils de gestion (RMM).
           </div>
         </div>
-        <button class="btn btn-primary" @click="openCreate">
+        <button v-if="auth.hasPermission('settings.rmm.write')" class="btn btn-primary" @click="openCreate">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Ajouter
         </button>
@@ -225,7 +227,7 @@
               <th>URL</th>
               <th>Statut</th>
               <th>Dernière sync</th>
-              <th style="text-align:right">Actions</th>
+              <th v-if="auth.hasPermission('settings.rmm.write')" style="text-align:right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -254,7 +256,7 @@
                 </div>
                 <span v-else style="color:var(--text-muted)">Jamais</span>
               </td>
-              <td style="text-align:right;white-space:nowrap">
+              <td v-if="auth.hasPermission('settings.rmm.write')" style="text-align:right;white-space:nowrap">
                 <button class="btn" style="font-size:11px;padding:3px 9px;margin-right:4px"
                   :disabled="syncing === intg.id"
                   @click="doSync(intg)">
@@ -391,13 +393,15 @@ const auth = useAuthStore()
 // ── Onglets ───────────────────────────────────────────────────────────────────
 const tabs = computed(() => {
   const t = [{ key: 'notifications', label: 'Mes notifications' }]
-  if (auth.isAdmin) {
+  if (auth.hasPermission('settings.smtp.read')) {
     t.unshift({ key: 'smtp', label: 'Configuration SMTP' })
+  }
+  if (auth.hasPermission('settings.rmm.read')) {
     t.push({ key: 'rmm', label: 'Intégrations RMM' })
   }
   return t
 })
-const activeTab = ref(auth.isAdmin ? 'smtp' : 'notifications')
+const activeTab = ref(auth.hasPermission('settings.smtp.read') ? 'smtp' : 'notifications')
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SMTP
@@ -409,7 +413,7 @@ const testEmail  = ref('')
 const testSending = ref(false)
 
 async function loadSmtp() {
-  if (!auth.isAdmin) return
+  if (!auth.hasPermission('settings.smtp.read')) return
   const { data } = await settingsApi.getSmtp()
   smtp.value = { host: data.host, port: data.port, user: data.user, password: data.password, from_: data.from_, tls: data.tls }
   testEmail.value = auth.user?.email || ''
@@ -566,7 +570,7 @@ function fmtDate(iso) {
 }
 
 async function loadIntegrations() {
-  if (!auth.isAdmin) return
+  if (!auth.hasPermission('settings.rmm.read')) return
   rmmLoading.value = true
   try {
     const { data } = await integrationsApi.list()

@@ -68,7 +68,7 @@
       </div>
 
       <!-- ── Actions ────────────────────────────────────────────────── -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div v-if="auth.hasPermission('certificates.write')" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
 
         <!-- Générer un nouveau certificat -->
         <div class="card">
@@ -239,6 +239,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { certificatesApi } from '@/api'
+import { useAuthStore }    from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const loading       = ref(true)
 const actionLoading = ref(false)

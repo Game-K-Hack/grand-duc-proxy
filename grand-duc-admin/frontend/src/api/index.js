@@ -120,6 +120,15 @@ export const integrationsApi = {
   sync:   (id)        => api.post(`/integrations/${id}/sync`),
 }
 
+// ── Rôles ────────────────────────────────────────────────────────────────────
+export const rolesApi = {
+  list:        ()          => api.get('/roles'),
+  permissions: ()          => api.get('/roles/permissions'),
+  create:      (body)      => api.post('/roles', body),
+  update:      (id, body)  => api.put(`/roles/${id}`, body),
+  delete:      (id)        => api.delete(`/roles/${id}`),
+}
+
 // ── Utilisateurs clients (IP) ─────────────────────────────────────────────────
 export const clientUsersApi = {
   list:       ()             => api.get('/client-users'),

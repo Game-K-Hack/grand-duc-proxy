@@ -6,8 +6,8 @@ from typing import Optional
 
 from database import get_db
 from models   import TlsBypass
-from security import get_current_user, require_admin
 from models   import User
+from security import require_permission
 
 router = APIRouter()
 
@@ -27,7 +27,7 @@ class TlsBypassOut(BaseModel):
 @router.get("", response_model=list[TlsBypassOut])
 async def list_bypass(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_permission("tls_bypass.read")),
 ):
     rows = (await db.execute(select(TlsBypass).order_by(TlsBypass.host))).scalars().all()
     return [
@@ -40,7 +40,7 @@ async def list_bypass(
 async def create_bypass(
     body:  TlsBypassIn,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("tls_bypass.write")),
 ):
     host = body.host.strip().lower().lstrip("*.")
     if not host:
@@ -58,7 +58,7 @@ async def create_bypass(
 async def delete_bypass(
     bypass_id: int,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("tls_bypass.write")),
 ):
     if not (await db.execute(select(TlsBypass).where(TlsBypass.id == bypass_id))).scalar_one_or_none():
         raise HTTPException(404, "Entrée introuvable")

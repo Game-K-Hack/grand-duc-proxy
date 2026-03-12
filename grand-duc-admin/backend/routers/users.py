@@ -5,8 +5,8 @@ from pydantic import BaseModel
 from typing import Optional
 
 from database import get_db
-from models   import User
-from security import hash_password, require_admin
+from models   import User, Role
+from security import hash_password, require_permission
 
 router = APIRouter()
 
@@ -15,14 +15,14 @@ class UserIn(BaseModel):
     username: str
     email:    Optional[str] = None
     password: str
-    role:     str = "viewer"
+    role_id:  int
     enabled:  bool = True
 
 
 class UserUpdate(BaseModel):
-    email:    Optional[str] = None
-    password: Optional[str] = None
-    role:     Optional[str] = None
+    email:    Optional[str]  = None
+    password: Optional[str]  = None
+    role_id:  Optional[int]  = None
     enabled:  Optional[bool] = None
 
 
@@ -31,17 +31,27 @@ class UserOut(BaseModel):
     username:   str
     email:      Optional[str]
     role:       str
+    role_id:    int | None
+    role_name:  str
     enabled:    bool
     created_at: str
     last_login: Optional[str]
 
 
-def user_to_out(u: User) -> UserOut:
+async def user_to_out(u: User, db: AsyncSession) -> UserOut:
+    role_name = "—"
+    if u.role_id:
+        result = await db.execute(select(Role.name).where(Role.id == u.role_id))
+        rn = result.scalar_one_or_none()
+        if rn:
+            role_name = rn
     return UserOut(
         id=u.id,
         username=u.username,
         email=u.email,
         role=u.role,
+        role_id=u.role_id,
+        role_name=role_name,
         enabled=u.enabled,
         created_at=u.created_at.isoformat(),
         last_login=u.last_login.isoformat() if u.last_login else None,
@@ -51,30 +61,33 @@ def user_to_out(u: User) -> UserOut:
 @router.get("", response_model=list[UserOut])
 async def list_users(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("users.read")),
 ):
     result = await db.execute(select(User).order_by(User.created_at.desc()))
-    return [user_to_out(u) for u in result.scalars().all()]
+    return [await user_to_out(u, db) for u in result.scalars().all()]
 
 
 @router.post("", response_model=UserOut, status_code=201)
 async def create_user(
     body:  UserIn,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("users.write")),
 ):
     existing = await db.execute(select(User).where(User.username == body.username))
     if existing.scalar_one_or_none():
         raise HTTPException(409, "Ce nom d'utilisateur existe déjà")
 
-    if body.role not in ("admin", "viewer"):
-        raise HTTPException(400, "role doit être 'admin' ou 'viewer'")
+    # Valider que le rôle existe
+    role = (await db.execute(select(Role).where(Role.id == body.role_id))).scalar_one_or_none()
+    if not role:
+        raise HTTPException(400, "Rôle introuvable")
 
     user = User(
         username=body.username,
         email=body.email,
         hashed_password=hash_password(body.password),
-        role=body.role,
+        role=role.name.lower()[:10],
+        role_id=body.role_id,
         enabled=body.enabled,
     )
     db.add(user)
@@ -87,11 +100,11 @@ async def create_user(
         "new_account",
         f"Nouveau compte créé : {user.username}",
         [f"Nom d'utilisateur : <strong>{user.username}</strong>",
-         f"Rôle : {user.role}",
+         f"Rôle : {role.name}",
          f"Email : {user.email or '—'}"],
     ))
 
-    return user_to_out(user)
+    return await user_to_out(user, db)
 
 
 @router.put("/{user_id}", response_model=UserOut)
@@ -99,7 +112,7 @@ async def update_user(
     user_id: int,
     body:    UserUpdate,
     db:      AsyncSession = Depends(get_db),
-    _user:   User = Depends(require_admin),
+    _user:   User = Depends(require_permission("users.write")),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user   = result.scalar_one_or_none()
@@ -107,20 +120,25 @@ async def update_user(
         raise HTTPException(404, "Utilisateur introuvable")
 
     if body.email    is not None: user.email           = body.email
-    if body.role     is not None: user.role            = body.role
     if body.enabled  is not None: user.enabled         = body.enabled
     if body.password is not None: user.hashed_password = hash_password(body.password)
+    if body.role_id  is not None:
+        role = (await db.execute(select(Role).where(Role.id == body.role_id))).scalar_one_or_none()
+        if not role:
+            raise HTTPException(400, "Rôle introuvable")
+        user.role_id = body.role_id
+        user.role = role.name.lower()[:10]
 
     await db.commit()
     await db.refresh(user)
-    return user_to_out(user)
+    return await user_to_out(user, db)
 
 
 @router.delete("/{user_id}", status_code=204)
 async def delete_user(
     user_id: int,
     db:      AsyncSession = Depends(get_db),
-    current: User = Depends(require_admin),
+    current: User = Depends(require_permission("users.write")),
 ):
     if current.id == user_id:
         raise HTTPException(400, "Impossible de supprimer votre propre compte")

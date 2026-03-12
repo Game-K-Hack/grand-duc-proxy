@@ -10,7 +10,7 @@
       <div class="card" style="padding:0;overflow:hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)">
           <div style="font-weight:600;font-size:13px">Utilisateurs</div>
-          <button v-if="auth.isAdmin" class="btn btn-primary btn-sm" @click="openCreate">
+          <button v-if="auth.hasPermission('client_users.write')" class="btn btn-primary btn-sm" @click="openCreate">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
@@ -54,7 +54,7 @@
                   <span v-if="!u.groups.length" style="font-size:10px;color:var(--text-muted)">Sans groupe</span>
                 </div>
               </div>
-              <div v-if="selected?.id === u.id && auth.isAdmin" style="display:flex;gap:3px;flex-shrink:0;margin-left:6px">
+              <div v-if="selected?.id === u.id && auth.hasPermission('client_users.write')" style="display:flex;gap:3px;flex-shrink:0;margin-left:6px">
                 <button class="btn btn-ghost btn-sm btn-icon" @click.stop="openEdit(u)">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
@@ -107,7 +107,7 @@
                 </div>
               </div>
             </div>
-            <button v-if="auth.isAdmin" class="btn btn-ghost btn-sm" @click="openEdit(selected)">
+            <button v-if="auth.hasPermission('client_users.write')" class="btn btn-ghost btn-sm" @click="openEdit(selected)">
               Modifier
             </button>
           </div>
@@ -120,7 +120,7 @@
               <div style="font-weight:600;font-size:13px;margin-bottom:2px">Groupes assignés</div>
               <div style="font-size:12px;color:var(--text-muted)">Les règles s'appliquent cumulativement dans l'ordre de priorité.</div>
             </div>
-            <div v-if="auth.isAdmin" style="flex-shrink:0">
+            <div v-if="auth.hasPermission('client_users.write')" style="flex-shrink:0">
               <button ref="addBtnRef" class="btn btn-primary btn-sm" @click="toggleDropdown" :disabled="savingGroups">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -165,7 +165,7 @@
                 <div v-if="g.description" style="font-size:11px;color:var(--text-muted);margin-top:1px">{{ g.description }}</div>
                 <div v-else style="font-size:11px;color:var(--text-muted);margin-top:1px">{{ g.rule_count }} règle{{ g.rule_count !== 1 ? 's' : '' }}</div>
               </div>
-              <button v-if="auth.isAdmin" class="btn btn-danger btn-sm btn-icon group-row-del" @click="removeGroup(g.id)" :disabled="savingGroups">
+              <button v-if="auth.hasPermission('client_users.write')" class="btn btn-danger btn-sm btn-icon group-row-del" @click="removeGroup(g.id)" :disabled="savingGroups">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
                   <path d="M10 11v6M14 11v6M9 6V4h6v2"/>

@@ -6,7 +6,7 @@ from typing import Optional
 
 from database import get_db
 from models   import ClientUser, ClientGroup, ClientUserGroups, GroupRule, FilterRule
-from security import get_current_user, require_admin
+from security import require_permission
 from models   import User
 
 router = APIRouter()
@@ -84,7 +84,7 @@ async def build_user_out(db, u: ClientUser) -> ClientUserOut:
 @router.get("", response_model=list[ClientUserOut])
 async def list_client_users(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_permission("client_users.read")),
 ):
     users = (await db.execute(
         select(ClientUser).order_by(ClientUser.label.nullslast(), ClientUser.ip_address)
@@ -96,7 +96,7 @@ async def list_client_users(
 async def create_client_user(
     body:  ClientUserIn,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("client_users.write")),
 ):
     if (await db.execute(select(ClientUser).where(ClientUser.ip_address == body.ip_address))).scalar_one_or_none():
         raise HTTPException(409, "Cette adresse IP est déjà enregistrée")
@@ -111,7 +111,7 @@ async def create_client_user(
 async def update_client_user(
     user_id: int, body: ClientUserUpdate,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("client_users.write")),
 ):
     u = await get_user_or_404(db, user_id)
     if body.label    is not None: u.label    = body.label
@@ -126,7 +126,7 @@ async def update_client_user(
 async def delete_client_user(
     user_id: int,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("client_users.write")),
 ):
     await get_user_or_404(db, user_id)
     await db.execute(delete(ClientUser).where(ClientUser.id == user_id))
@@ -139,7 +139,7 @@ async def delete_client_user(
 async def get_user_groups(
     user_id: int,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_permission("client_users.read")),
 ):
     await get_user_or_404(db, user_id)
     return await fetch_user_groups(db, user_id)
@@ -149,7 +149,7 @@ async def get_user_groups(
 async def set_user_groups(
     user_id: int, body: SetGroupsIn,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("client_users.write")),
 ):
     """Remplace entièrement la liste des groupes de l'utilisateur."""
     await get_user_or_404(db, user_id)
@@ -191,7 +191,7 @@ class TestAccessOut(BaseModel):
 async def test_access(
     body: TestAccessIn,
     db:   AsyncSession = Depends(get_db),
-    _u:   User = Depends(get_current_user),
+    _u:   User = Depends(require_permission("test_access.use")),
 ):
     import re
 

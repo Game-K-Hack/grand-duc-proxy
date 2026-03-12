@@ -6,7 +6,7 @@ from typing import Optional
 
 from database import get_db
 from models   import ClientGroup, ClientUserGroups, GroupRule, FilterRule
-from security import get_current_user, require_admin
+from security import require_permission
 from models   import User
 
 router = APIRouter()
@@ -58,7 +58,7 @@ async def get_group_or_404(db, group_id: int) -> ClientGroup:
 @router.get("", response_model=list[GroupOut])
 async def list_groups(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_permission("client_groups.read")),
 ):
     groups = (await db.execute(
         select(ClientGroup).order_by(ClientGroup.is_default.desc(), ClientGroup.name)
@@ -92,7 +92,7 @@ async def list_groups(
 async def create_group(
     body:  GroupIn,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("client_groups.write")),
 ):
     if (await db.execute(select(ClientGroup).where(ClientGroup.name == body.name))).scalar_one_or_none():
         raise HTTPException(409, "Un groupe avec ce nom existe déjà")
@@ -108,7 +108,7 @@ async def create_group(
 async def update_group(
     group_id: int, body: GroupIn,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("client_groups.write")),
 ):
     g = await get_group_or_404(db, group_id)
     g.name = body.name
@@ -123,7 +123,7 @@ async def update_group(
 async def delete_group(
     group_id: int,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("client_groups.write")),
 ):
     g = await get_group_or_404(db, group_id)
     if g.is_default:
@@ -138,7 +138,7 @@ async def delete_group(
 async def list_group_rules(
     group_id: int,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_permission("client_groups.read")),
 ):
     await get_group_or_404(db, group_id)
     rows = (await db.execute(
@@ -165,7 +165,7 @@ async def list_group_rules(
 async def add_group_rule(
     group_id: int, body: GroupRuleIn,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("client_groups.write")),
 ):
     await get_group_or_404(db, group_id)
     if body.action not in ("block", "allow"):
@@ -201,7 +201,7 @@ async def add_group_rule(
 async def delete_group_rule(
     group_id: int, gr_id: int,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("client_groups.write")),
 ):
     await db.execute(
         delete(GroupRule).where(GroupRule.id == gr_id, GroupRule.group_id == group_id)

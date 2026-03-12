@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from database import get_db
 from models   import AppSetting, KillswitchHistory, User
-from security import get_current_user, require_admin, verify_password
+from security import require_permission, verify_password
 
 router = APIRouter()
 
@@ -33,7 +33,7 @@ class VerifyPasswordIn(BaseModel):
 @router.get("", response_model=KillswitchOut)
 async def get_killswitch(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_permission("killswitch.read")),
 ):
     row = await db.get(AppSetting, "killswitch")
     return KillswitchOut(active=row.value == "true" if row else False)
@@ -43,7 +43,7 @@ async def get_killswitch(
 async def set_killswitch(
     body: KillswitchIn,
     db:   AsyncSession = Depends(get_db),
-    user: User = Depends(require_admin),
+    user: User = Depends(require_permission("killswitch.write")),
 ):
     row = await db.get(AppSetting, "killswitch")
     if row:
@@ -70,7 +70,7 @@ async def set_killswitch(
 @router.get("/history", response_model=list[HistoryEntryOut])
 async def get_history(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_permission("killswitch.read")),
 ):
     result = await db.execute(
         select(KillswitchHistory).order_by(KillswitchHistory.created_at.desc()).limit(50)
@@ -82,7 +82,7 @@ async def get_history(
 async def verify_password_endpoint(
     body: VerifyPasswordIn,
     db:   AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("killswitch.write")),
 ):
     if not verify_password(body.password, user.hashed_password):
         raise HTTPException(

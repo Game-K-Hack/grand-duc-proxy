@@ -6,7 +6,7 @@ from typing import Optional
 
 from database import get_db
 from models   import AccessLog, ClientUser
-from security import get_current_user
+from security import require_permission
 from models   import User
 
 router = APIRouter()
@@ -36,7 +36,7 @@ async def list_logs(
     search:  str = "",
     blocked: Optional[bool] = None,
     db:      AsyncSession = Depends(get_db),
-    _user:   User = Depends(get_current_user),
+    _user:   User = Depends(require_permission("logs.read")),
 ):
     q = (
         select(AccessLog, ClientUser.label.label("client_label"))

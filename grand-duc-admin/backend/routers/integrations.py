@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, AsyncSessionLocal
 from models import ClientUser, RmmIntegration
-from security import get_current_user, require_admin
+from security import require_permission
 from models import User
 
 logger = logging.getLogger(__name__)
@@ -357,7 +357,7 @@ VALID_TYPES = set(ADAPTERS.keys())
 @router.get("", response_model=list[IntegrationOut])
 async def list_integrations(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("settings.rmm.read")),
 ):
     rows = (await db.execute(select(RmmIntegration).order_by(RmmIntegration.name))).scalars().all()
     return [_out(r) for r in rows]
@@ -367,7 +367,7 @@ async def list_integrations(
 async def create_integration(
     body:  IntegrationIn,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("settings.rmm.write")),
 ):
     if body.type not in VALID_TYPES:
         raise HTTPException(400, f"Type invalide. Valeurs acceptées : {', '.join(VALID_TYPES)}")
@@ -382,7 +382,7 @@ async def create_integration(
 async def update_integration(
     intg_id: int, body: IntegrationUpdate,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("settings.rmm.write")),
 ):
     intg = (await db.execute(select(RmmIntegration).where(RmmIntegration.id == intg_id))).scalar_one_or_none()
     if not intg:
@@ -398,7 +398,7 @@ async def update_integration(
 async def delete_integration(
     intg_id: int,
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(require_admin),
+    _user: User = Depends(require_permission("settings.rmm.write")),
 ):
     intg = (await db.execute(select(RmmIntegration).where(RmmIntegration.id == intg_id))).scalar_one_or_none()
     if not intg:
@@ -411,7 +411,7 @@ async def delete_integration(
 async def sync_integration(
     intg_id: int,
     db:      AsyncSession = Depends(get_db),
-    _user:   User = Depends(require_admin),
+    _user:   User = Depends(require_permission("settings.rmm.write")),
 ):
     """Déclenche une synchronisation immédiate."""
     intg = (await db.execute(select(RmmIntegration).where(RmmIntegration.id == intg_id))).scalar_one_or_none()

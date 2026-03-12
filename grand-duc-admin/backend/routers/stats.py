@@ -6,7 +6,7 @@ from typing import Literal
 
 from database import get_db
 from models   import AccessLog, FilterRule
-from security import get_current_user
+from security import require_permission
 from models   import User
 
 router = APIRouter()
@@ -36,7 +36,7 @@ class TrafficResponse(BaseModel):
 async def get_traffic(
     mode:  Literal["24h", "1h"] = Query("24h"),
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_permission("dashboard.read")),
 ):
     """
     Retourne les données de trafic agrégées :
@@ -112,7 +112,7 @@ class StatsResponse(BaseModel):
 @router.get("", response_model=StatsResponse)
 async def get_stats(
     db:    AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_permission("dashboard.read")),
 ):
     # Totaux
     total   = (await db.execute(select(func.count()).select_from(AccessLog))).scalar_one()
