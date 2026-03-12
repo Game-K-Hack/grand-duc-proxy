@@ -479,9 +479,9 @@
             <li><strong>Prévisualisation en direct</strong> — le rendu se met à jour automatiquement pendant l'édition</li>
             <li><strong>Variables dynamiques</strong> — cliquez sur les badges pour insérer les variables dans le code :
               <ul>
-                <li><code>{{event_label}}</code> — titre de l'événement</li>
-                <li><code>{{details}}</code> — lignes de détail HTML</li>
-                <li><code>{{date}}</code> — date et heure de l'envoi</li>
+                <li><code>{{ '{' + '{' + 'event_label' + '}' + '}' }}</code> — titre de l'événement</li>
+                <li><code>{{ '{' + '{' + 'details' + '}' + '}' }}</code> — lignes de détail HTML</li>
+                <li><code>{{ '{' + '{' + 'date' + '}' + '}' }}</code> — date et heure de l'envoi</li>
               </ul>
             </li>
             <li><strong>Réinitialisation</strong> — restaure le template par défaut à tout moment</li>
