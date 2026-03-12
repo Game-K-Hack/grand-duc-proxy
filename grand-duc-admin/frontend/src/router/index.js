@@ -14,7 +14,6 @@ const routes = [
   { path: '/killswitch',    name: 'Killswitch',    component: () => import('@/views/Killswitch.vue'),    meta: { admin: true } },
   { path: '/certificates', name: 'Certificates', component: () => import('@/views/Certificates.vue'), meta: { admin: true } },
   { path: '/proxy-logs',    name: 'ProxyLogs',    component: () => import('@/views/ProxyLogs.vue'),    meta: { admin: true } },
-  { path: '/integrations',  name: 'Integrations', component: () => import('@/views/Integrations.vue'), meta: { admin: true } },
   { path: '/settings',      name: 'Settings',     component: () => import('@/views/Settings.vue') },
   { path: '/documentation', name: 'Documentation', component: () => import('@/views/Documentation.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/' },

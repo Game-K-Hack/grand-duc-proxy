@@ -93,7 +93,7 @@
 
       <div v-if="!auth.user?.email"
         style="padding:12px 16px;border-radius:6px;border:1px solid var(--red);background:rgba(248,81,73,.08);color:var(--red);font-size:13px;margin-bottom:16px;max-width:560px">
-        ⚠️ Votre compte n'a pas d'adresse email configurée. Les alertes ne pourront pas être envoyées.
+        Votre compte n'a pas d'adresse email configurée. Les alertes ne pourront pas être envoyées.
         <br><a href="/users" style="color:inherit;text-decoration:underline">Modifier mon compte</a>
       </div>
 
@@ -123,7 +123,7 @@
           </div>
 
           <div v-if="prefsSaved" style="margin-top:12px;font-size:12px;color:var(--green)">
-            ✓ Préférences enregistrées
+            Préférences enregistrées
           </div>
         </div>
 
@@ -183,12 +183,207 @@
       </div>
     </div>
 
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- Onglet 3 : Intégrations RMM (admin uniquement)                        -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <div v-if="activeTab === 'rmm' && auth.isAdmin">
+
+      <!-- En-tête + bouton ajouter -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div>
+          <div style="font-size:15px;font-weight:700;margin-bottom:2px">Intégrations RMM</div>
+          <div style="font-size:12px;color:var(--text-muted)">
+            Synchronisation automatique des agents depuis vos outils de gestion (RMM).
+          </div>
+        </div>
+        <button class="btn btn-primary" @click="openCreate">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Ajouter
+        </button>
+      </div>
+
+      <!-- Types supportés -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <div v-for="t in RMM_TYPES" :key="t.key"
+          style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;color:var(--text-muted)">
+          <span :style="`color:${t.color}`">&#9679;</span> {{ t.label }}
+        </div>
+      </div>
+
+      <!-- Tableau -->
+      <div class="card" style="padding:0;overflow:hidden">
+        <div v-if="rmmLoading" style="padding:32px;text-align:center;color:var(--text-muted)">Chargement…</div>
+        <div v-else-if="integrations.length === 0"
+          style="padding:40px;text-align:center;color:var(--text-muted);font-size:13px">
+          Aucune intégration configurée. Ajoutez votre premier RMM.
+        </div>
+        <table v-else class="data-table" style="width:100%">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Type</th>
+              <th>URL</th>
+              <th>Statut</th>
+              <th>Dernière sync</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="intg in integrations" :key="intg.id">
+              <td style="font-weight:500">{{ intg.name }}</td>
+              <td>
+                <span class="badge" :style="`background:${typeColor(intg.type)}22;color:${typeColor(intg.type)}`">
+                  {{ typeLabel(intg.type) }}
+                </span>
+              </td>
+              <td style="font-family:monospace;font-size:11px;color:var(--text-muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                {{ intg.url }}
+              </td>
+              <td>
+                <span v-if="!intg.enabled" class="badge badge-muted">Désactivé</span>
+                <span v-else-if="intg.last_sync_status?.startsWith('OK')" class="badge badge-green">Actif</span>
+                <span v-else-if="intg.last_sync_status?.startsWith('Erreur')" class="badge badge-red">Erreur</span>
+                <span v-else class="badge badge-muted">En attente</span>
+              </td>
+              <td style="font-size:11px">
+                <div v-if="intg.last_sync_at" style="display:flex;flex-direction:column;gap:2px">
+                  <span>{{ fmtDate(intg.last_sync_at) }}</span>
+                  <span style="color:var(--text-muted);font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                    {{ intg.last_sync_status }}
+                  </span>
+                </div>
+                <span v-else style="color:var(--text-muted)">Jamais</span>
+              </td>
+              <td style="text-align:right;white-space:nowrap">
+                <button class="btn" style="font-size:11px;padding:3px 9px;margin-right:4px"
+                  :disabled="syncing === intg.id"
+                  @click="doSync(intg)">
+                  <svg v-if="syncing !== intg.id" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                  </svg>
+                  <span v-else style="display:inline-block;width:10px;height:10px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite"></span>
+                  {{ syncing === intg.id ? 'Sync…' : 'Sync' }}
+                </button>
+                <button class="btn" style="font-size:11px;padding:3px 9px;margin-right:4px"
+                  @click="openEdit(intg)">Modifier</button>
+                <button class="btn" style="font-size:11px;padding:3px 9px;color:var(--red);border-color:var(--red)"
+                  @click="confirmDelete(intg)">Supprimer</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Résultat de sync -->
+      <transition name="fade">
+        <div v-if="syncResult"
+          :style="`margin-top:12px;padding:10px 14px;border-radius:6px;font-size:12px;border:1px solid;${
+            syncResult.error
+              ? 'background:rgba(248,81,73,.1);border-color:var(--red);color:var(--red)'
+              : 'background:rgba(46,160,67,.1);border-color:var(--green);color:var(--green)'
+          }`">
+          <strong>{{ syncResult.error ? 'Erreur' : 'Synchronisation réussie' }}</strong>
+          <span v-if="!syncResult.error"> — {{ syncResult.created }} créés, {{ syncResult.updated }} mis à jour, {{ syncResult.skipped }} ignorés</span>
+          <span v-else> — {{ syncResult.error }}</span>
+        </div>
+      </transition>
+
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- Modals RMM : ajout / édition                                          -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <div v-if="showRmmModal"
+      style="position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000"
+      @click.self="showRmmModal = false">
+      <div class="card" style="width:480px;max-width:95vw;padding:28px 24px;max-height:90vh;overflow-y:auto">
+        <div style="font-size:16px;font-weight:700;margin-bottom:18px">
+          {{ rmmEditing ? 'Modifier l\'intégration' : 'Nouvelle intégration RMM' }}
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px">
+
+          <div>
+            <label class="form-label">Nom <span style="color:var(--red)">*</span></label>
+            <input v-model="rmmForm.name" class="form-input" placeholder="Mon RMM" />
+          </div>
+
+          <div>
+            <label class="form-label">Type <span style="color:var(--red)">*</span></label>
+            <select v-model="rmmForm.type" class="form-input" :disabled="!!rmmEditing">
+              <option value="">— Choisir —</option>
+              <option v-for="t in RMM_TYPES" :key="t.key" :value="t.key">{{ t.label }}</option>
+            </select>
+            <div v-if="rmmForm.type" style="margin-top:6px;font-size:11px;color:var(--text-muted)">
+              {{ RMM_TYPES.find(t => t.key === rmmForm.type)?.hint }}
+            </div>
+          </div>
+
+          <div>
+            <label class="form-label">URL de base <span style="color:var(--red)">*</span></label>
+            <input v-model="rmmForm.url" class="form-input" placeholder="https://rmm.example.com" />
+          </div>
+
+          <div>
+            <label class="form-label">{{ rmmApiKeyLabel }} <span style="color:var(--red)">*</span></label>
+            <input v-model="rmmForm.api_key" class="form-input" type="password"
+              :placeholder="rmmApiKeyPlaceholder" autocomplete="new-password" />
+          </div>
+
+          <div v-if="rmmNeedsSecret">
+            <label class="form-label">{{ rmmApiSecretLabel }} <span style="color:var(--red)">*</span></label>
+            <input v-model="rmmForm.api_secret" class="form-input" type="password"
+              :placeholder="'xxxxxxxxxxxxxxxxxxxx'" autocomplete="new-password" />
+          </div>
+
+          <div>
+            <label class="form-label">Intervalle de synchronisation (minutes)</label>
+            <input v-model.number="rmmForm.sync_interval_minutes" class="form-input" type="number" min="5" max="1440" />
+          </div>
+
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+            <input type="checkbox" v-model="rmmForm.enabled" />
+            Activer la synchronisation automatique
+          </label>
+
+          <div v-if="rmmFormError"
+            style="padding:8px 12px;border-radius:5px;background:rgba(248,81,73,.1);border:1px solid var(--red);color:var(--red);font-size:12px">
+            {{ rmmFormError }}
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:22px">
+          <button class="btn" @click="showRmmModal = false">Annuler</button>
+          <button class="btn btn-primary" @click="saveIntegration" :disabled="rmmSaving">
+            {{ rmmSaving ? 'Enregistrement…' : (rmmEditing ? 'Mettre à jour' : 'Créer') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirmation suppression RMM -->
+    <div v-if="deleteTarget"
+      style="position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000"
+      @click.self="deleteTarget = null">
+      <div class="card" style="width:400px;padding:26px 24px">
+        <div style="font-size:16px;font-weight:700;margin-bottom:8px">Supprimer l'intégration ?</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.5">
+          L'intégration <strong>{{ deleteTarget.name }}</strong> sera supprimée. Les utilisateurs clients importés depuis ce RMM ne seront pas supprimés, mais perdront leur lien.
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn" @click="deleteTarget = null">Annuler</button>
+          <button class="btn" style="background:var(--red);color:#fff;border-color:var(--red)"
+            @click="doDelete">Supprimer</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { settingsApi } from '@/api'
+import { settingsApi, integrationsApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -196,12 +391,17 @@ const auth = useAuthStore()
 // ── Onglets ───────────────────────────────────────────────────────────────────
 const tabs = computed(() => {
   const t = [{ key: 'notifications', label: 'Mes notifications' }]
-  if (auth.isAdmin) t.unshift({ key: 'smtp', label: 'Configuration SMTP' })
+  if (auth.isAdmin) {
+    t.unshift({ key: 'smtp', label: 'Configuration SMTP' })
+    t.push({ key: 'rmm', label: 'Intégrations RMM' })
+  }
   return t
 })
 const activeTab = ref(auth.isAdmin ? 'smtp' : 'notifications')
 
-// ── SMTP ──────────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// SMTP
+// ══════════════════════════════════════════════════════════════════════════════
 const smtp = ref({ host: '', port: 587, user: '', password: '', from_: '', tls: true })
 const smtpSaving = ref(false)
 const smtpMsg    = ref(null)
@@ -244,7 +444,9 @@ async function sendTest() {
   }
 }
 
-// ── Préférences de notification ────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// Notifications
+// ══════════════════════════════════════════════════════════════════════════════
 const prefs      = ref([])
 const prefsSaved = ref(false)
 
@@ -298,9 +500,165 @@ async function removeRuleWatch(ruleId) {
   await loadRules()
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// Intégrations RMM
+// ══════════════════════════════════════════════════════════════════════════════
+const RMM_TYPES = [
+  {
+    key: 'tactical', label: 'Tactical RMM', color: '#58a6ff',
+    hint: 'URL de votre instance Tactical RMM (ex : https://rmm.example.com). Clé API générée dans Paramètres > API.',
+  },
+  {
+    key: 'ninja', label: 'NinjaRMM', color: '#7ee787',
+    hint: 'URL de l\'API NinjaRMM (ex : https://app.ninjarmm.com). Client ID et Client Secret OAuth2.',
+  },
+  {
+    key: 'datto', label: 'Datto RMM', color: '#e3b341',
+    hint: 'URL de l\'API Datto (ex : https://zinfandel-api.centrastage.net). Clé et Secret API depuis Datto RMM > Setup > API.',
+  },
+  {
+    key: 'atera', label: 'Atera', color: '#ff7b72',
+    hint: 'URL https://app.atera.com. Clé API depuis Atera > Admin > API.',
+  },
+]
+
+const integrations  = ref([])
+const rmmLoading    = ref(true)
+const showRmmModal  = ref(false)
+const rmmEditing    = ref(null)
+const rmmSaving     = ref(false)
+const rmmFormError  = ref('')
+const syncing       = ref(null)
+const syncResult    = ref(null)
+const deleteTarget  = ref(null)
+
+const emptyRmmForm = () => ({
+  name: '', type: '', url: '', api_key: '', api_secret: '',
+  sync_interval_minutes: 60, enabled: true,
+})
+const rmmForm = ref(emptyRmmForm())
+
+const rmmNeedsSecret = computed(() => ['ninja', 'datto'].includes(rmmForm.value.type))
+
+const rmmApiKeyLabel = computed(() => ({
+  ninja: 'Client ID (OAuth2)',
+  datto: 'Clé API publique',
+}[rmmForm.value.type] ?? 'Clé API'))
+
+const rmmApiKeyPlaceholder = computed(() => ({
+  tactical: 'xxxxxxxxxxxxxxxxxxxxxxxx',
+  ninja:    'ni_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+  datto:    'xxxxxxxxxxxxxxxxxxxxxxxx',
+  atera:    'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+}[rmmForm.value.type] ?? ''))
+
+const rmmApiSecretLabel = computed(() => rmmForm.value.type === 'ninja' ? 'Client Secret (OAuth2)' : 'Secret API')
+
+function typeColor(type) {
+  return RMM_TYPES.find(t => t.key === type)?.color ?? '#8b949e'
+}
+function typeLabel(type) {
+  return RMM_TYPES.find(t => t.key === type)?.label ?? type
+}
+function fmtDate(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+async function loadIntegrations() {
+  if (!auth.isAdmin) return
+  rmmLoading.value = true
+  try {
+    const { data } = await integrationsApi.list()
+    integrations.value = data
+  } finally {
+    rmmLoading.value = false
+  }
+}
+
+function openCreate() {
+  rmmEditing.value  = null
+  rmmForm.value     = emptyRmmForm()
+  rmmFormError.value = ''
+  showRmmModal.value = true
+}
+
+function openEdit(intg) {
+  rmmEditing.value = intg
+  rmmForm.value = {
+    name:                  intg.name,
+    type:                  intg.type,
+    url:                   intg.url,
+    api_key:               intg.api_key,
+    api_secret:            intg.api_secret ?? '',
+    sync_interval_minutes: intg.sync_interval_minutes,
+    enabled:               intg.enabled,
+  }
+  rmmFormError.value = ''
+  showRmmModal.value = true
+}
+
+async function saveIntegration() {
+  rmmFormError.value = ''
+  if (!rmmForm.value.name.trim())     { rmmFormError.value = 'Le nom est requis.'; return }
+  if (!rmmForm.value.type)            { rmmFormError.value = 'Choisissez un type.'; return }
+  if (!rmmForm.value.url.trim())      { rmmFormError.value = 'L\'URL est requise.'; return }
+  if (!rmmForm.value.api_key.trim())  { rmmFormError.value = 'La clé API est requise.'; return }
+  if (rmmNeedsSecret.value && !rmmForm.value.api_secret?.trim()) {
+    rmmFormError.value = `${rmmApiSecretLabel.value} est requis pour ${typeLabel(rmmForm.value.type)}.`
+    return
+  }
+
+  rmmSaving.value = true
+  try {
+    const payload = { ...rmmForm.value }
+    if (!payload.api_secret) delete payload.api_secret
+
+    if (rmmEditing.value) {
+      const { data } = await integrationsApi.update(rmmEditing.value.id, payload)
+      const idx = integrations.value.findIndex(i => i.id === rmmEditing.value.id)
+      if (idx >= 0) integrations.value[idx] = data
+    } else {
+      const { data } = await integrationsApi.create(payload)
+      integrations.value.push(data)
+    }
+    showRmmModal.value = false
+  } catch (err) {
+    rmmFormError.value = err.response?.data?.detail ?? 'Erreur lors de l\'enregistrement.'
+  } finally {
+    rmmSaving.value = false
+  }
+}
+
+async function doSync(intg) {
+  syncing.value    = intg.id
+  syncResult.value = null
+  try {
+    const { data } = await integrationsApi.sync(intg.id)
+    syncResult.value = data
+    await loadIntegrations()
+  } catch (err) {
+    syncResult.value = { error: err.response?.data?.detail ?? 'Erreur de synchronisation.' }
+  } finally {
+    syncing.value = null
+    setTimeout(() => { syncResult.value = null }, 8000)
+  }
+}
+
+function confirmDelete(intg) {
+  deleteTarget.value = intg
+}
+
+async function doDelete() {
+  if (!deleteTarget.value) return
+  await integrationsApi.delete(deleteTarget.value.id)
+  integrations.value = integrations.value.filter(i => i.id !== deleteTarget.value.id)
+  deleteTarget.value = null
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  await Promise.all([loadSmtp(), loadPrefs(), loadRules()])
+  await Promise.all([loadSmtp(), loadPrefs(), loadRules(), loadIntegrations()])
 })
 </script>
 
@@ -318,4 +676,20 @@ onMounted(async () => {
 }
 .tab-btn:hover  { color: var(--text); }
 .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-green  { background: rgba(46,160,67,.15); color: var(--green); }
+.badge-red    { background: rgba(248,81,73,.15);  color: var(--red); }
+.badge-muted  { background: rgba(139,148,158,.15); color: var(--text-muted); }
+
+.fade-enter-active, .fade-leave-active { transition: opacity .3s; }
+.fade-enter-from, .fade-leave-to       { opacity: 0; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
