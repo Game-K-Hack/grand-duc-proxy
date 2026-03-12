@@ -8,8 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import logging
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s  %(message)s")
-
 from database import engine, Base
 from config   import settings
 
@@ -148,12 +146,10 @@ app.add_middleware(
 )
 
 
-# ── Middlewares ASGI (pure ASGI — compatible avec les uploads & SSE) ──────────
+# ── Security headers middleware (pure ASGI — compatible avec les uploads) ─────
 from starlette.types import ASGIApp, Receive, Scope, Send
-import time as _time
 
-class TimingAndSecurityMiddleware:
-    """Mesure le temps de chaque requête HTTP + ajoute les headers de sécurité."""
+class SecurityHeadersMiddleware:
     def __init__(self, app: ASGIApp):
         self.app = app
 
@@ -162,31 +158,21 @@ class TimingAndSecurityMiddleware:
             await self.app(scope, receive, send)
             return
 
-        t0 = _time.time()
-        path = scope.get("path", "?")
-        method = scope.get("method", "?")
-        status_code = 0
-
-        async def send_with_extras(message):
-            nonlocal status_code
+        async def send_with_headers(message):
             if message["type"] == "http.response.start":
-                status_code = message.get("status", 0)
-                elapsed_ms = (_time.time() - t0) * 1000
+                headers = dict(message.get("headers", []))
                 extra = [
                     (b"x-content-type-options", b"nosniff"),
                     (b"x-frame-options", b"DENY"),
                     (b"x-xss-protection", b"1; mode=block"),
                     (b"referrer-policy", b"strict-origin-when-cross-origin"),
-                    (b"server-timing", f"total;dur={elapsed_ms:.1f}".encode()),
                 ]
                 message["headers"] = list(message.get("headers", [])) + extra
             await send(message)
 
-        await self.app(scope, receive, send_with_extras)
-        elapsed_ms = (_time.time() - t0) * 1000
-        logger.info("[HTTP] %s %s → %s en %.0f ms", method, path, status_code, elapsed_ms)
+        await self.app(scope, receive, send_with_headers)
 
-app.add_middleware(TimingAndSecurityMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(auth.router,  prefix="/api/auth",  tags=["Auth"])
 app.include_router(rules.router, prefix="/api/rules", tags=["Règles"])

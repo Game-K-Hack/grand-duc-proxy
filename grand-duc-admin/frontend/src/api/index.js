@@ -5,22 +5,12 @@ const api = axios.create({ baseURL: '/api' })
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
-  config._t0 = performance.now()
   return config
 })
 
 api.interceptors.response.use(
-  res => {
-    const ms = res.config._t0 ? (performance.now() - res.config._t0).toFixed(0) : '?'
-    const server = res.headers?.['server-timing'] || ''
-    console.log(`[API] ${res.config.method?.toUpperCase()} ${res.config.url} → ${res.status} en ${ms}ms (serveur: ${server})`)
-    return res
-  },
+  res =>  res,
   err => {
-    if (err.config?._t0) {
-      const ms = (performance.now() - err.config._t0).toFixed(0)
-      console.warn(`[API] ${err.config.method?.toUpperCase()} ${err.config.url} → ${err.response?.status || 'ERR'} en ${ms}ms`)
-    }
     // Ne pas rediriger sur 401 pour la route login (mauvais identifiants)
     const isLoginRoute = err.config?.url?.includes('/auth/login')
     if (err.response?.status === 401 && !isLoginRoute) {

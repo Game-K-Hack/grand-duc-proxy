@@ -43,7 +43,6 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  const t0 = performance.now()
   const auth = useAuthStore()
   if (!to.meta.public && !auth.isLoggedIn) return '/login'
   if (to.path === '/login' && auth.isLoggedIn) return '/'
@@ -52,11 +51,6 @@ router.beforeEach(async (to) => {
     await auth.fetchMe()
   }
   if (to.meta.permissions && !auth.hasAnyPermission(...to.meta.permissions)) return '/'
-  console.log(`[NAV] guard ${to.name} en ${(performance.now() - t0).toFixed(0)}ms`)
-})
-
-router.afterEach((to) => {
-  console.log(`[NAV] ${to.name} affiché à ${new Date().toLocaleTimeString()}`)
 })
 
 export default router
