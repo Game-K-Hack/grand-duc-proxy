@@ -51,6 +51,29 @@ async def _ensure_builtin_roles():
             await db.commit()
 
 
+async def _ensure_indexes():
+    """Crée les index manquants sur access_logs (accélère le dashboard)."""
+    from sqlalchemy import text
+    indexes = [
+        ("ix_access_logs_accessed_at",         "CREATE INDEX ix_access_logs_accessed_at ON access_logs (accessed_at)"),
+        ("ix_access_logs_blocked_accessed_at", "CREATE INDEX ix_access_logs_blocked_accessed_at ON access_logs (blocked, accessed_at)"),
+        ("ix_access_logs_client_ip",           "CREATE INDEX ix_access_logs_client_ip ON access_logs (client_ip)"),
+        ("ix_access_logs_host",                "CREATE INDEX ix_access_logs_host ON access_logs (host)"),
+    ]
+    for name, sql in indexes:
+        try:
+            async with engine.begin() as conn:
+                exists = await conn.scalar(text(
+                    "SELECT 1 FROM pg_indexes WHERE indexname = :name"
+                ).bindparams(name=name))
+                if exists:
+                    continue
+                await conn.execute(text(sql))
+                logger.info("Index %s créé", name)
+        except Exception as exc:
+            logger.warning("Index %s échoué : %s", name, exc)
+
+
 async def _ensure_columns():
     """Ajoute les colonnes manquantes (migrations légères)."""
     from sqlalchemy import text
@@ -85,6 +108,7 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("create_all échoué (droits insuffisants ?). Erreur : %s", exc)
     await _ensure_columns()
+    await _ensure_indexes()
     await _ensure_builtin_roles()
     integrations.start_sync_loop()
     _rule_task = asyncio.create_task(_rule_check_loop())

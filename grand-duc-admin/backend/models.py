@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 from database import Base
 
@@ -19,6 +19,12 @@ class FilterRule(Base):
 
 class AccessLog(Base):
     __tablename__ = "access_logs"
+    __table_args__ = (
+        Index("ix_access_logs_accessed_at", "accessed_at"),
+        Index("ix_access_logs_blocked_accessed_at", "blocked", "accessed_at"),
+        Index("ix_access_logs_client_ip", "client_ip"),
+        Index("ix_access_logs_host", "host"),
+    )
 
     id:          Mapped[int]           = mapped_column(BigInteger, primary_key=True)
     client_ip:   Mapped[str | None]    = mapped_column(Text)

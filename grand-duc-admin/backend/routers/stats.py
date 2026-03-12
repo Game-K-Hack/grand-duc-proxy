@@ -1,5 +1,6 @@
+import time
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, text, cast, Date
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Literal
@@ -10,6 +11,22 @@ from security import require_permission
 from models   import User
 
 router = APIRouter()
+
+# ── Cache mémoire simple ─────────────────────────────────────────────────────
+_cache: dict[str, tuple[float, dict]] = {}  # clé → (timestamp, données)
+_STATS_TTL = 10      # secondes — les stats sont cachées 10s
+_TRAFFIC_TTL = 15    # secondes — le trafic est caché 15s
+
+
+def _get_cached(key: str, ttl: float):
+    entry = _cache.get(key)
+    if entry and time.time() - entry[0] < ttl:
+        return entry[1]
+    return None
+
+
+def _set_cached(key: str, data):
+    _cache[key] = (time.time(), data)
 
 
 class TopDomain(BaseModel):
@@ -45,6 +62,10 @@ async def get_traffic(
     db:    AsyncSession = Depends(get_db),
     _user: User = Depends(require_permission("dashboard.read")),
 ):
+    cached = _get_cached(f"traffic_{mode}", _TRAFFIC_TTL)
+    if cached:
+        return cached
+
     if mode == "24h":
         sql = text("""
             WITH hours AS (
@@ -94,7 +115,9 @@ async def get_traffic(
         )
         for r in rows
     ]
-    return TrafficResponse(points=points, mode=mode)
+    result = TrafficResponse(points=points, mode=mode)
+    _set_cached(f"traffic_{mode}", result)
+    return result
 
 
 class StatsResponse(BaseModel):
@@ -121,6 +144,10 @@ async def get_stats(
     db:    AsyncSession = Depends(get_db),
     _user: User = Depends(require_permission("dashboard.read")),
 ):
+    cached = _get_cached("stats", _STATS_TTL)
+    if cached:
+        return cached
+
     # Aujourd'hui + hier en une seule requête
     counts_row = (await db.execute(
         select(
@@ -201,7 +228,7 @@ async def get_stats(
     ks_row = await db.get(AppSetting, "killswitch")
     killswitch_active = ks_row.value == "true" if ks_row else False
 
-    return StatsResponse(
+    result = StatsResponse(
         requests_today=today_total,
         blocked_today=today_blocked,
         allowed_today=today_allowed,
@@ -215,3 +242,5 @@ async def get_stats(
         top_domains=[TopDomain(host=r.host, count=r.count, blocked=r.blocked or 0) for r in top_domains_rows],
         top_clients=[TopClient(ip=r.client_ip or "?", label=r.label, total=r.total, blocked=r.blocked or 0) for r in top_clients_rows],
     )
+    _set_cached("stats", result)
+    return result
