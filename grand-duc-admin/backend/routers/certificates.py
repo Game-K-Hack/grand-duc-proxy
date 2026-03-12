@@ -193,6 +193,15 @@ async def generate_cert(
         not_after=cert.not_valid_after_utc,
     ))
     await db.commit()
+
+    import asyncio
+    from services.email import notify
+    asyncio.create_task(notify(
+        "certificate",
+        "Nouveau certificat CA généré",
+        [f"Par : {user.username}", f"Sujet : {info['subject']}", f"Expire : {info['not_after']}"],
+    ))
+
     return CertInfoOut(**info, exists=True)
 
 
@@ -222,6 +231,15 @@ async def import_cert(
         not_after=cert.not_valid_after_utc,
     ))
     await db.commit()
+
+    import asyncio
+    from services.email import notify
+    asyncio.create_task(notify(
+        "certificate",
+        "Certificat CA importé",
+        [f"Par : {user.username}", f"Sujet : {info['subject']}", f"Expire : {info['not_after']}"],
+    ))
+
     return CertInfoOut(**info, exists=True)
 
 

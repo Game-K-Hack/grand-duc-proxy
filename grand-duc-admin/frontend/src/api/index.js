@@ -99,6 +99,18 @@ export const tlsBypassApi = {
   delete: (id)   => api.delete(`/tls-bypass/${id}`),
 }
 
+// ── Paramètres globaux & notifications ───────────────────────────────────────
+export const settingsApi = {
+  getSmtp:          ()       => api.get('/settings/smtp'),
+  updateSmtp:       (body)   => api.put('/settings/smtp', body),
+  testSmtp:         (to)     => api.post('/settings/smtp/test', { to }),
+  getNotifications: ()       => api.get('/settings/notifications'),
+  setNotifications: (body)   => api.put('/settings/notifications', body),
+  getRuleWatches:   ()       => api.get('/settings/notifications/rules'),
+  getAvailRules:    ()       => api.get('/settings/notifications/rules/available'),
+  setRuleWatches:   (ids)    => api.put('/settings/notifications/rules', { rule_ids: ids }),
+}
+
 // ── Intégrations RMM ─────────────────────────────────────────────────────────
 export const integrationsApi = {
   list:   ()          => api.get('/integrations'),

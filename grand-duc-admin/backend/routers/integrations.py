@@ -207,6 +207,12 @@ async def run_sync(integration_id: int) -> dict:
                 .values(last_sync_at=datetime.now(timezone.utc), last_sync_status=status)
             )
             await db.commit()
+            from services.email import notify
+            asyncio.create_task(notify(
+                "rmm_sync_error",
+                f"Erreur de synchronisation RMM : {intg.name}",
+                [f"Intégration : <strong>{intg.name}</strong> ({intg.type})", f"Erreur : {exc}"],
+            ))
             return {"error": status}
 
         now = datetime.now(timezone.utc)

@@ -54,6 +54,16 @@ async def set_killswitch(
     action = "activated" if body.active else "deactivated"
     db.add(KillswitchHistory(action=action, username=user.username))
     await db.commit()
+
+    import asyncio
+    from services.email import notify
+    label = "activé" if body.active else "désactivé"
+    asyncio.create_task(notify(
+        "killswitch",
+        f"Killswitch {label}",
+        [f"Action : <strong>{label}</strong>", f"Par : {user.username}"],
+    ))
+
     return KillswitchOut(active=body.active)
 
 

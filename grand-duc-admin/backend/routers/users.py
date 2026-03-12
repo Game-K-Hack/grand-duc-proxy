@@ -80,6 +80,17 @@ async def create_user(
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    import asyncio
+    from services.email import notify
+    asyncio.create_task(notify(
+        "new_account",
+        f"Nouveau compte créé : {user.username}",
+        [f"Nom d'utilisateur : <strong>{user.username}</strong>",
+         f"Rôle : {user.role}",
+         f"Email : {user.email or '—'}"],
+    ))
+
     return user_to_out(user)
 
 

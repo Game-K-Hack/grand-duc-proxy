@@ -114,6 +114,22 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class NotificationPref(Base):
+    """Préférences de notification par utilisateur et type d'événement."""
+    __tablename__ = "notification_prefs"
+    user_id:    Mapped[int]  = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    event_type: Mapped[str]  = mapped_column(Text, primary_key=True)
+    enabled:    Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class NotificationRuleWatch(Base):
+    """Règles à surveiller pour déclencher des alertes sur les logs d'accès."""
+    __tablename__ = "notification_rule_watches"
+    user_id:              Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id",        ondelete="CASCADE"), primary_key=True)
+    rule_id:              Mapped[int] = mapped_column(BigInteger, ForeignKey("filter_rules.id", ondelete="CASCADE"), primary_key=True)
+    last_notified_log_id: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
 class KillswitchHistory(Base):
     """Historique des activations/désactivations du killswitch."""
     __tablename__ = "killswitch_history"

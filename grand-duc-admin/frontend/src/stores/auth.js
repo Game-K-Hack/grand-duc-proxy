@@ -21,8 +21,8 @@ export const useAuthStore = defineStore('auth', {
       try {
         const { data } = await authApi.login(username, password)
         this.token = data.access_token
-        this.user  = { username: data.username, role: data.role }
         localStorage.setItem('token', data.access_token)
+        await this.fetchMe()
       } catch (e) {
         this.error = e.response?.data?.detail || 'Erreur de connexion'
         throw e

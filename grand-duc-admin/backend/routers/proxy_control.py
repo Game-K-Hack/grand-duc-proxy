@@ -121,4 +121,11 @@ async def restart_proxy(_user: User = Depends(require_admin)):
     _spawn_proxy()
     await asyncio.sleep(0.5)
 
+    from services.email import notify
+    asyncio.create_task(notify(
+        "proxy_restart",
+        "Proxy redémarré",
+        [f"Par : {_user.username}", f"Était en cours : {'oui' if was_running else 'non'}"],
+    ))
+
     return {"restarted": True, "was_running": was_running, "now_running": _is_running()}
