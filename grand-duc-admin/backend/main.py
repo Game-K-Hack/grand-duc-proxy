@@ -51,11 +51,36 @@ async def _ensure_builtin_roles():
             await db.commit()
 
 
+async def _ensure_columns():
+    """Ajoute les colonnes manquantes (migrations légères)."""
+    from sqlalchemy import text
+    migrations = [
+        ("client_users", "logged_user", "ALTER TABLE client_users ADD COLUMN logged_user TEXT"),
+    ]
+    for table, col, sql in migrations:
+        try:
+            async with engine.begin() as conn:
+                exists = await conn.scalar(text(
+                    f"SELECT 1 FROM information_schema.columns "
+                    f"WHERE table_name='{table}' AND column_name='{col}'"
+                ))
+                if not exists:
+                    await conn.execute(text(sql))
+                    logger.info("Migration : ajout colonne %s.%s", table, col)
+        except Exception as exc:
+            logger.warning(
+                "Migration %s.%s échouée (droits insuffisants ?). "
+                "Exécutez manuellement : %s   —   Erreur : %s",
+                table, col, sql, exc,
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Crée les tables si absentes (utile en dev)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await _ensure_columns()
     await _ensure_builtin_roles()
     integrations.start_sync_loop()
     _rule_task = asyncio.create_task(_rule_check_loop())

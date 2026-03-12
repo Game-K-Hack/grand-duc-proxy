@@ -85,6 +85,7 @@ class ClientUser(Base):
     label:               Mapped[str | None]  = mapped_column(Text)
     hostname:            Mapped[str | None]  = mapped_column(Text)
     os:                  Mapped[str | None]  = mapped_column(Text)
+    logged_user:         Mapped[str | None]  = mapped_column(Text)
     source:              Mapped[str]         = mapped_column(String(20), default='manual')
     rmm_agent_id:        Mapped[str | None]  = mapped_column(Text)
     last_seen_rmm:       Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

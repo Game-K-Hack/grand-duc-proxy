@@ -30,39 +30,82 @@ router = APIRouter()
 
 @dataclass
 class AgentData:
-    agent_id: str
-    ip:       str
-    hostname: str
-    os:       str
+    agent_id:    str
+    ip:          str
+    hostname:    str
+    os:          str
+    logged_user: str = ""
 
 
 # ── Adaptateurs RMM ────────────────────────────────────────────────────────────
 
 async def _fetch_tactical(intg: RmmIntegration) -> list[AgentData]:
-    """Tactical RMM — API REST avec header X-API-KEY."""
-    headers = {"X-API-KEY": intg.api_key}
-    async with httpx.AsyncClient(verify=False, timeout=20) as client:
-        r = await client.get(f"{intg.url.rstrip('/')}/api/agents/", headers=headers)
+    """Tactical RMM — API REST avec header X-API-KEY.
+    Doc officielle : https://docs.tacticalrmm.com/functions/api/
+    L'URL doit pointer vers le domaine API (ex: https://api.rmm.example.com).
+    """
+    headers = {"X-API-KEY": intg.api_key, "Content-Type": "application/json"}
+    base = intg.url.rstrip("/")
+
+    async with httpx.AsyncClient(verify=False, timeout=30, follow_redirects=True) as client:
+        # Endpoint officiel Tactical RMM : GET /agents/
+        # Sans detail=false pour récupérer local_ips, public_ip, etc.
+        url = f"{base}/agents/"
+        try:
+            r = await client.get(url, headers=headers)
+        except httpx.ConnectError as exc:
+            raise ValueError(
+                f"Connexion impossible à {base} ({exc}). "
+                "Vérifiez que l'URL pointe vers le domaine API de Tactical RMM "
+                "(ex: https://api.rmm.example.com), pas l'interface web (rmm.example.com)"
+            )
+
+        if r.status_code == 403:
+            raise ValueError("Clé API refusée (403 Forbidden). Vérifiez la clé API dans Tactical RMM > Settings > Global Settings > API Keys")
         r.raise_for_status()
-        agents = r.json()
+
+        body = r.text
+        if not body.strip():
+            raise ValueError(f"Réponse vide du serveur (status {r.status_code})")
+        try:
+            agents = r.json()
+        except Exception:
+            # Si on reçoit du HTML, c'est probablement l'interface web, pas l'API
+            snippet = body[:200]
+            if "<html" in snippet.lower():
+                raise ValueError(
+                    f"Le serveur a renvoyé une page HTML au lieu de JSON. "
+                    "L'URL pointe probablement vers l'interface web et non le domaine API"
+                )
+            raise ValueError(f"Réponse non-JSON du serveur : {snippet}")
+
+        if not isinstance(agents, list):
+            raise ValueError(f"L'API a renvoyé un {type(agents).__name__} au lieu d'une liste d'agents")
+
+    logger.info("Tactical RMM : %d agents reçus de %s", len(agents), base)
 
     results = []
     for a in agents:
-        # local_ips est une liste séparée par virgules ou un tableau
+        # local_ips peut être une liste ou une chaîne séparée par des virgules
         raw_ips = a.get("local_ips", "") or ""
         if isinstance(raw_ips, list):
             ips = [ip.strip() for ip in raw_ips if ip.strip()]
         else:
             ips = [ip.strip() for ip in str(raw_ips).split(",") if ip.strip()]
-        # on prend la première IP non-loopback
+        # Prendre la première IP non-loopback
         ip = next((i for i in ips if not i.startswith("127.")), ips[0] if ips else None)
+        # Fallback sur public_ip si pas d'IP locale
         if not ip:
+            ip = (a.get("public_ip") or "").strip() or None
+        if not ip:
+            logger.debug("Tactical RMM : agent %s ignoré (pas d'IP)", a.get("hostname", "?"))
             continue
         results.append(AgentData(
             agent_id=str(a.get("agent_id") or a.get("pk") or a.get("id", "")),
             ip=ip,
             hostname=a.get("hostname", ""),
             os=a.get("operating_system", ""),
+            logged_user=a.get("logged_username") or a.get("last_logged_in_user") or "",
         ))
     return results
 
@@ -232,6 +275,7 @@ async def run_sync(integration_id: int) -> dict:
                     # Mettre à jour l'entrée RMM
                     existing.hostname = agent.hostname
                     existing.os = agent.os
+                    existing.logged_user = agent.logged_user or existing.logged_user
                     existing.rmm_agent_id = agent.agent_id
                     existing.last_seen_rmm = now
                     existing.rmm_integration_id = integration_id
@@ -244,6 +288,7 @@ async def run_sync(integration_id: int) -> dict:
                     label=agent.hostname,
                     hostname=agent.hostname,
                     os=agent.os,
+                    logged_user=agent.logged_user,
                     source="rmm",
                     rmm_agent_id=agent.agent_id,
                     last_seen_rmm=now,

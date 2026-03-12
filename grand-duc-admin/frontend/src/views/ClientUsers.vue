@@ -46,6 +46,9 @@
                 <div v-if="u.hostname && u.hostname !== u.label" style="font-size:10px;color:var(--text-muted);margin-top:1px">
                   {{ u.hostname }}
                 </div>
+                <div v-if="u.logged_user" style="font-size:10px;color:var(--accent);margin-top:1px">
+                  👤 {{ u.logged_user }}
+                </div>
                 <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px">
                   <span
                     v-for="g in u.groups" :key="g.id"
@@ -92,7 +95,11 @@
               <div style="font-family:monospace;font-size:13px;color:var(--text-muted);margin-top:2px">
                 {{ selected.label ? selected.ip_address : '' }}
               </div>
-              <div v-if="selected.hostname || selected.os" style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap">
+              <div v-if="selected.hostname || selected.os || selected.logged_user" style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap">
+                <div v-if="selected.logged_user" style="font-size:12px;color:var(--text-muted)">
+                  <span>Utilisateur :</span>
+                  <strong style="color:var(--text);margin-left:4px">{{ selected.logged_user }}</strong>
+                </div>
                 <div v-if="selected.hostname" style="font-size:12px;color:var(--text-muted)">
                   <span style="color:var(--text-muted)">Hôte :</span>
                   <strong style="color:var(--text);margin-left:4px">{{ selected.hostname }}</strong>
@@ -293,9 +300,10 @@ const filteredUsers = computed(() => {
   if (!q) return users.value
   return users.value.filter(u =>
     u.ip_address.includes(q) ||
-    (u.label    || '').toLowerCase().includes(q) ||
-    (u.hostname || '').toLowerCase().includes(q) ||
-    (u.os       || '').toLowerCase().includes(q)
+    (u.label       || '').toLowerCase().includes(q) ||
+    (u.hostname    || '').toLowerCase().includes(q) ||
+    (u.os          || '').toLowerCase().includes(q) ||
+    (u.logged_user || '').toLowerCase().includes(q)
   )
 })
 

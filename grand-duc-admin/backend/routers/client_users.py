@@ -38,6 +38,7 @@ class ClientUserOut(BaseModel):
     label:              Optional[str]
     hostname:           Optional[str]
     os:                 Optional[str]
+    logged_user:        Optional[str]
     source:             str
     last_seen_rmm:      Optional[str]
     rmm_integration_id: Optional[int]
@@ -71,7 +72,8 @@ async def fetch_user_groups(db, user_id: int) -> list[GroupBrief]:
 async def build_user_out(db, u: ClientUser) -> ClientUserOut:
     return ClientUserOut(
         id=u.id, ip_address=u.ip_address, label=u.label,
-        hostname=u.hostname, os=u.os, source=u.source,
+        hostname=u.hostname, os=u.os, logged_user=u.logged_user,
+        source=u.source,
         last_seen_rmm=u.last_seen_rmm.isoformat() if u.last_seen_rmm else None,
         rmm_integration_id=u.rmm_integration_id,
         groups=await fetch_user_groups(db, u.id),
@@ -109,7 +111,8 @@ async def list_client_users(
     return [
         ClientUserOut(
             id=u.id, ip_address=u.ip_address, label=u.label,
-            hostname=u.hostname, os=u.os, source=u.source,
+            hostname=u.hostname, os=u.os, logged_user=u.logged_user,
+            source=u.source,
             last_seen_rmm=u.last_seen_rmm.isoformat() if u.last_seen_rmm else None,
             rmm_integration_id=u.rmm_integration_id,
             groups=groups_by_user.get(u.id, []),
