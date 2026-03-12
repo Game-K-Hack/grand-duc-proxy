@@ -1,4 +1,5 @@
 import time
+import logging
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +11,7 @@ from models   import AccessLog, AppSetting, FilterRule, ClientUser
 from security import require_permission
 from models   import User
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ── Cache mémoire simple ─────────────────────────────────────────────────────
@@ -64,8 +66,10 @@ async def get_traffic(
 ):
     cached = _get_cached(f"traffic_{mode}", _TRAFFIC_TTL)
     if cached:
+        logger.info("[TRAFFIC] cache hit")
         return cached
 
+    t0 = time.time()
     if mode == "24h":
         sql = text("""
             WITH hours AS (
@@ -117,6 +121,7 @@ async def get_traffic(
     ]
     result = TrafficResponse(points=points, mode=mode)
     _set_cached(f"traffic_{mode}", result)
+    logger.info("[TRAFFIC %s] requête SQL en %.0f ms", mode, (time.time() - t0) * 1000)
     return result
 
 
@@ -146,8 +151,10 @@ async def get_stats(
 ):
     cached = _get_cached("stats", _STATS_TTL)
     if cached:
+        logger.info("[STATS] cache hit")
         return cached
 
+    t0 = time.time()
     # Aujourd'hui + hier en une seule requête
     counts_row = (await db.execute(
         select(
@@ -243,4 +250,5 @@ async def get_stats(
         top_clients=[TopClient(ip=r.client_ip or "?", label=r.label, total=r.total, blocked=r.blocked or 0) for r in top_clients_rows],
     )
     _set_cached("stats", result)
+    logger.info("[STATS] requête SQL en %.0f ms", (time.time() - t0) * 1000)
     return result

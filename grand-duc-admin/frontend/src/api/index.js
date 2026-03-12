@@ -5,12 +5,22 @@ const api = axios.create({ baseURL: '/api' })
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
+  config._t0 = performance.now()
   return config
 })
 
 api.interceptors.response.use(
-  res => res,
+  res => {
+    const ms = res.config._t0 ? (performance.now() - res.config._t0).toFixed(0) : '?'
+    const server = res.headers?.['server-timing'] || ''
+    console.log(`[API] ${res.config.method?.toUpperCase()} ${res.config.url} → ${res.status} en ${ms}ms (serveur: ${server})`)
+    return res
+  },
   err => {
+    if (err.config?._t0) {
+      const ms = (performance.now() - err.config._t0).toFixed(0)
+      console.warn(`[API] ${err.config.method?.toUpperCase()} ${err.config.url} → ${err.response?.status || 'ERR'} en ${ms}ms`)
+    }
     // Ne pas rediriger sur 401 pour la route login (mauvais identifiants)
     const isLoginRoute = err.config?.url?.includes('/auth/login')
     if (err.response?.status === 401 && !isLoginRoute) {
@@ -57,8 +67,17 @@ export const authApi = {
   me: () => api.get('/auth/me'),
 }
 
+// ── Prefetch léger — déduplique les appels concurrents (survol + montage) ────
+const _inflight = new Map()
+function dedup(key, fn) {
+  if (_inflight.has(key)) return _inflight.get(key)
+  const p = fn().finally(() => _inflight.delete(key))
+  _inflight.set(key, p)
+  return p
+}
+
 export const rulesApi = {
-  list:   (params) => api.get('/rules', { params }),
+  list:   (params) => dedup(`rules:${params?.skip}:${params?.search}`, () => api.get('/rules', { params })),
   create: (body)   => { invalidateCache('/rules'); return api.post('/rules', body) },
   update: (id, b)  => { invalidateCache('/rules'); return api.put(`/rules/${id}`, b) },
   toggle: (id)     => { invalidateCache('/rules'); return api.patch(`/rules/${id}/toggle`) },
@@ -66,16 +85,16 @@ export const rulesApi = {
 }
 
 export const logsApi = {
-  list: (params) => api.get('/logs', { params }),
+  list: (params) => dedup(`logs:${params?.skip}`, () => api.get('/logs', { params })),
 }
 
 export const statsApi = {
-  get:     ()     => api.get('/stats'),
-  traffic: (mode) => api.get('/stats/traffic', { params: { mode } }),
+  get:     ()     => dedup('stats', () => api.get('/stats')),
+  traffic: (mode) => dedup(`traffic:${mode}`, () => api.get('/stats/traffic', { params: { mode } })),
 }
 
 export const usersApi = {
-  list:            ()       => api.get('/users'),
+  list:            ()       => dedup('users', () => api.get('/users')),
   assignableRoles: ()       => cachedGet('/users/assignable-roles', 30_000),
   create:          (body)   => { invalidateCache('/users'); return api.post('/users', body) },
   update:          (id, b)  => { invalidateCache('/users'); return api.put(`/users/${id}`, b) },
@@ -96,9 +115,9 @@ export const groupsApi = {
 
 // ── Killswitch ────────────────────────────────────────────────────────────────
 export const killswitchApi = {
-  get:            ()         => api.get('/killswitch'),
+  get:            ()         => dedup('killswitch', () => api.get('/killswitch')),
   set:            (active)   => api.post('/killswitch', { active }),
-  history:        ()         => api.get('/killswitch/history'),
+  history:        ()         => dedup('killswitch-h', () => api.get('/killswitch/history')),
   verifyPassword: (password) => api.post('/killswitch/verify-password', { password }),
 }
 
@@ -111,7 +130,7 @@ export const proxyApi = {
 
 // ── Certificats CA ────────────────────────────────────────────────────────────
 export const certificatesApi = {
-  info:     ()                       => api.get('/certificates/info'),
+  info:     ()                       => dedup('cert-info', () => api.get('/certificates/info')),
   generate: ()                       => api.post('/certificates/generate'),
   import:   (certFile, keyFile)      => {
     const form = new FormData()
@@ -119,13 +138,13 @@ export const certificatesApi = {
     form.append('key_file',  keyFile)
     return api.post('/certificates/import', form)
   },
-  history:  ()                       => api.get('/certificates/history'),
+  history:  ()                       => dedup('cert-hist', () => api.get('/certificates/history')),
   downloadUrl: () => '/api/certificates/ca.crt',
 }
 
 // ── TLS Bypass ────────────────────────────────────────────────────────────────
 export const tlsBypassApi = {
-  list:   ()     => api.get('/tls-bypass'),
+  list:   ()     => dedup('tls-bypass', () => api.get('/tls-bypass')),
   create: (body) => api.post('/tls-bypass', body),
   delete: (id)   => api.delete(`/tls-bypass/${id}`),
 }
@@ -172,7 +191,7 @@ export const rolesApi = {
 
 // ── Utilisateurs clients (IP) ─────────────────────────────────────────────────
 export const clientUsersApi = {
-  list:       ()             => api.get('/client-users'),
+  list:       ()             => dedup('client-users', () => api.get('/client-users')),
   create:     (body)         => api.post('/client-users', body),
   update:     (id, body)     => api.put(`/client-users/${id}`, body),
   delete:     (id)           => api.delete(`/client-users/${id}`),
