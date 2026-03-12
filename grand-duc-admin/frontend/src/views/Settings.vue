@@ -186,7 +186,76 @@
     </div>
 
     <!-- ══════════════════════════════════════════════════════════════════════ -->
-    <!-- Onglet 3 : Apparence                                                  -->
+    <!-- Onglet : Template e-mail                                               -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <div v-if="activeTab === 'email_template' && auth.hasPermission('settings.smtp.read')">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:15px;font-weight:700;margin-bottom:2px">Template des e-mails d'alerte</div>
+          <div style="font-size:12px;color:var(--text-muted)">
+            Modifiez le HTML du template. Utilisez les variables ci-dessous pour injecter le contenu dynamique.
+          </div>
+        </div>
+        <div v-if="auth.hasPermission('settings.smtp.write')" style="display:flex;gap:8px">
+          <button v-if="tplIsCustom" class="btn btn-ghost btn-sm" @click="resetTemplate" :disabled="tplSaving">
+            Réinitialiser par défaut
+          </button>
+          <button class="btn btn-primary btn-sm" @click="saveTemplate" :disabled="tplSaving">
+            {{ tplSaving ? 'Enregistrement…' : 'Enregistrer' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Variables disponibles -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <span v-for="v in tplVars" :key="v.key"
+          class="tpl-var" @click="insertVar(v.key)" :title="v.desc">
+          {{ v.key }}
+        </span>
+        <span style="font-size:11px;color:var(--text-muted);align-self:center;margin-left:4px">
+          Cliquez pour insérer
+        </span>
+      </div>
+
+      <div v-if="tplMsg"
+        :style="`margin-bottom:12px;padding:8px 12px;border-radius:5px;font-size:12px;border:1px solid;${
+          tplMsg.ok
+            ? 'background:rgba(46,160,67,.1);border-color:var(--green);color:var(--green)'
+            : 'background:rgba(248,81,73,.1);border-color:var(--red);color:var(--red)'
+        }`">
+        {{ tplMsg.text }}
+      </div>
+
+      <!-- Éditeur + prévisualisation -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;min-height:480px">
+        <!-- Éditeur -->
+        <div style="display:flex;flex-direction:column">
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text-muted)">Code HTML</div>
+          <textarea
+            ref="tplEditor"
+            v-model="tplCode"
+            spellcheck="false"
+            style="flex:1;min-height:400px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:12px;font-family:'JetBrains Mono',Consolas,monospace;font-size:12px;line-height:1.5;resize:vertical;tab-size:2"
+          ></textarea>
+        </div>
+        <!-- Prévisualisation -->
+        <div style="display:flex;flex-direction:column">
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text-muted)">Prévisualisation</div>
+          <div style="flex:1;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:#0d1117">
+            <iframe
+              :srcdoc="tplPreviewHtml"
+              style="width:100%;height:100%;border:none;min-height:400px"
+              sandbox="allow-same-origin"
+            ></iframe>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- Onglet : Apparence                                                     -->
     <!-- ══════════════════════════════════════════════════════════════════════ -->
     <div v-if="activeTab === 'appearance'">
 
@@ -485,7 +554,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { settingsApi, integrationsApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useTheme, PRESETS, COLOR_LABELS } from '@/composables/useTheme'
@@ -498,6 +567,9 @@ const tabs = computed(() => {
   const t = [{ key: 'notifications', label: 'Mes notifications' }]
   if (auth.hasPermission('settings.smtp.read')) {
     t.unshift({ key: 'smtp', label: 'Configuration SMTP' })
+  }
+  if (auth.hasPermission('settings.smtp.read')) {
+    t.push({ key: 'email_template', label: 'Template e-mail' })
   }
   t.push({ key: 'appearance', label: 'Apparence' })
   if (auth.hasPermission('settings.rmm.read')) {
@@ -623,6 +695,90 @@ async function saveCustomColors() {
     setTimeout(() => { themeSaved.value = false }, 3000)
   } finally {
     themeSaving.value = false
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Template e-mail
+// ══════════════════════════════════════════════════════════════════════════════
+const tplCode       = ref('')
+const tplPreviewHtml = ref('')
+const tplIsCustom   = ref(false)
+const tplSaving     = ref(false)
+const tplMsg        = ref(null)
+const tplEditor     = ref(null)
+let   tplPreviewTimer = null
+
+const tplVars = [
+  { key: '{{event_label}}', desc: "Titre de l'événement (ex : Règle de filtrage déclenchée)" },
+  { key: '{{details}}',     desc: 'Lignes de détail HTML (tableau <tr><td>…)' },
+  { key: '{{date}}',        desc: 'Date et heure UTC de l\'envoi' },
+]
+
+function insertVar(varKey) {
+  const el = tplEditor.value
+  if (!el) return
+  const start = el.selectionStart
+  const end   = el.selectionEnd
+  tplCode.value = tplCode.value.substring(0, start) + varKey + tplCode.value.substring(end)
+  nextTick(() => {
+    el.selectionStart = el.selectionEnd = start + varKey.length
+    el.focus()
+  })
+}
+
+watch(tplCode, () => {
+  clearTimeout(tplPreviewTimer)
+  tplPreviewTimer = setTimeout(refreshPreview, 400)
+})
+
+async function refreshPreview() {
+  if (!tplCode.value.trim()) { tplPreviewHtml.value = ''; return }
+  try {
+    const { data } = await settingsApi.previewEmailTemplate(tplCode.value)
+    tplPreviewHtml.value = data.html
+  } catch {
+    tplPreviewHtml.value = tplCode.value
+  }
+}
+
+async function loadTemplate() {
+  if (!auth.hasPermission('settings.smtp.read')) return
+  try {
+    const { data } = await settingsApi.getEmailTemplate()
+    tplCode.value     = data.template
+    tplIsCustom.value = data.is_custom
+    await refreshPreview()
+  } catch {}
+}
+
+async function saveTemplate() {
+  tplSaving.value = true
+  tplMsg.value = null
+  try {
+    await settingsApi.setEmailTemplate(tplCode.value)
+    tplIsCustom.value = true
+    tplMsg.value = { ok: true, text: 'Template enregistré.' }
+  } catch (e) {
+    tplMsg.value = { ok: false, text: e.response?.data?.detail ?? 'Erreur lors de l\'enregistrement.' }
+  } finally {
+    tplSaving.value = false
+    setTimeout(() => { tplMsg.value = null }, 5000)
+  }
+}
+
+async function resetTemplate() {
+  tplSaving.value = true
+  tplMsg.value = null
+  try {
+    await settingsApi.resetEmailTemplate()
+    await loadTemplate()
+    tplMsg.value = { ok: true, text: 'Template réinitialisé par défaut.' }
+  } catch (e) {
+    tplMsg.value = { ok: false, text: e.response?.data?.detail ?? 'Erreur.' }
+  } finally {
+    tplSaving.value = false
+    setTimeout(() => { tplMsg.value = null }, 5000)
   }
 }
 
@@ -791,6 +947,7 @@ async function loadTab(tab) {
   loadedTabs.add(tab)
   if (tab === 'smtp')          return loadSmtp()
   if (tab === 'notifications') return Promise.all([loadPrefs(), loadRules()])
+  if (tab === 'email_template') return loadTemplate()
   if (tab === 'appearance')    return                // theme deja charge globalement
   if (tab === 'rmm')           return loadIntegrations()
 }
@@ -836,6 +993,20 @@ onMounted(() => loadTab(activeTab.value))
 }
 .theme-card:hover { border-color: var(--text-muted); transform: translateY(-1px); }
 .theme-card.selected { border-color: var(--accent); background: var(--surface2); }
+
+.tpl-var {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  background: rgba(88,166,255,.1);
+  color: var(--blue);
+  border: 1px solid rgba(88,166,255,.25);
+  cursor: pointer;
+  transition: background .1s;
+}
+.tpl-var:hover { background: rgba(88,166,255,.2); }
 
 .fade-enter-active, .fade-leave-active { transition: opacity .3s; }
 .fade-enter-from, .fade-leave-to       { opacity: 0; }

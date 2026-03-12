@@ -16,7 +16,10 @@ import json
 from database import get_db
 from models import AppSetting, FilterRule, NotificationPref, NotificationRuleWatch, User, UserTheme
 from security import get_current_user, require_permission
-from services.email import EVENT_LABELS, _get_smtp_config, _send_async, _html_template
+from services.email import (
+    EVENT_LABELS, _get_smtp_config, _send_async, _html_template,
+    DEFAULT_EMAIL_TEMPLATE, render_template, invalidate_template_cache,
+)
 
 router = APIRouter()
 
@@ -131,7 +134,7 @@ async def test_smtp(
     if not cfg:
         raise HTTPException(400, "SMTP non configuré")
     try:
-        body_html = _html_template(
+        body_html = await _html_template(
             "Email de test",
             ["Ce message confirme que la configuration SMTP est correcte.",
              "Grand-Duc peut envoyer des alertes."],
@@ -140,6 +143,78 @@ async def test_smtp(
     except Exception as exc:
         raise HTTPException(502, f"Envoi échoué : {exc}")
     return {"ok": True}
+
+
+# ── Template e-mail ───────────────────────────────────────────────────────────
+
+class EmailTemplateIn(BaseModel):
+    template: str
+
+
+class EmailTemplateOut(BaseModel):
+    template: str
+    is_custom: bool
+
+
+@router.get("/email-template", response_model=EmailTemplateOut)
+async def get_email_template(
+    db:    AsyncSession = Depends(get_db),
+    _user: User = Depends(require_permission("settings.smtp.read")),
+):
+    row = await db.get(AppSetting, "email_template")
+    if row:
+        return EmailTemplateOut(template=row.value, is_custom=True)
+    return EmailTemplateOut(template=DEFAULT_EMAIL_TEMPLATE, is_custom=False)
+
+
+@router.put("/email-template")
+async def set_email_template(
+    body:  EmailTemplateIn,
+    db:    AsyncSession = Depends(get_db),
+    _user: User = Depends(require_permission("settings.smtp.write")),
+):
+    row = await db.get(AppSetting, "email_template")
+    if row:
+        row.value = body.template
+    else:
+        db.add(AppSetting(key="email_template", value=body.template))
+    await db.commit()
+    invalidate_template_cache()
+    return {"ok": True}
+
+
+@router.delete("/email-template")
+async def reset_email_template(
+    db:    AsyncSession = Depends(get_db),
+    _user: User = Depends(require_permission("settings.smtp.write")),
+):
+    row = await db.get(AppSetting, "email_template")
+    if row:
+        await db.delete(row)
+        await db.commit()
+    invalidate_template_cache()
+    return {"ok": True}
+
+
+class PreviewIn(BaseModel):
+    template: str
+
+
+@router.post("/email-template/preview")
+async def preview_email_template(
+    body:  PreviewIn,
+    _user: User = Depends(require_permission("settings.smtp.read")),
+):
+    """Rendu du template avec des données fictives, pour prévisualisation."""
+    sample_details = [
+        "Règle : <strong>.*discord.*</strong> (action : block)",
+        "3 déclenchement(s) depuis la dernière vérification",
+        "&nbsp;&nbsp;• 14:32:05 — 192.168.1.42 → discord.com",
+        "&nbsp;&nbsp;• 14:32:12 — 192.168.1.42 → cdn.discordapp.com",
+        "&nbsp;&nbsp;• 14:33:01 — 10.0.0.15 → gateway.discord.gg",
+    ]
+    html = render_template(body.template, "Règle de filtrage déclenchée", sample_details)
+    return {"html": html}
 
 
 # ── Préférences de notification (par utilisateur) ─────────────────────────────

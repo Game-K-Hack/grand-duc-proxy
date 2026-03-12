@@ -137,8 +137,12 @@ export const settingsApi = {
   getRuleWatches:   ()       => api.get('/settings/notifications/rules'),
   getAvailRules:    ()       => cachedGet('/settings/notifications/rules/available', 30_000),
   setRuleWatches:   (ids)    => { invalidateCache('/settings/notifications'); return api.put('/settings/notifications/rules', { rule_ids: ids }) },
-  getTheme:         ()       => api.get('/settings/theme'),
-  setTheme:         (theme)  => api.put('/settings/theme', { theme }),
+  getTheme:            ()         => api.get('/settings/theme'),
+  setTheme:            (theme)    => api.put('/settings/theme', { theme }),
+  getEmailTemplate:    ()         => api.get('/settings/email-template'),
+  setEmailTemplate:    (template) => api.put('/settings/email-template', { template }),
+  resetEmailTemplate:  ()         => api.delete('/settings/email-template'),
+  previewEmailTemplate:(template) => api.post('/settings/email-template/preview', { template }),
 }
 
 // ── Intégrations RMM ─────────────────────────────────────────────────────────
