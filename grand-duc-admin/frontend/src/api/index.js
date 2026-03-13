@@ -55,6 +55,7 @@ export const authApi = {
   login: (username, password) =>
     api.post('/auth/login', new URLSearchParams({ username, password })),
   me: () => api.get('/auth/me'),
+  changePassword: (new_password) => api.post('/auth/change-password', { new_password }),
 }
 
 // ── Prefetch léger — déduplique les appels concurrents (survol + montage) ────

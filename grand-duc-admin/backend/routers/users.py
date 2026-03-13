@@ -28,11 +28,12 @@ def _validate_password(v: str) -> str:
 
 
 class UserIn(BaseModel):
-    username: str
-    email:    Optional[str] = None
-    password: str
-    role_id:  int
-    enabled:  bool = True
+    username:             str
+    email:                Optional[str] = None
+    password:             str
+    role_id:              int
+    enabled:              bool = True
+    must_change_password: bool = False
 
     @field_validator("password")
     @classmethod
@@ -41,10 +42,11 @@ class UserIn(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    email:    Optional[str]  = None
-    password: Optional[str]  = None
-    role_id:  Optional[int]  = None
-    enabled:  Optional[bool] = None
+    email:                Optional[str]  = None
+    password:             Optional[str]  = None
+    role_id:              Optional[int]  = None
+    enabled:              Optional[bool] = None
+    must_change_password: Optional[bool] = None
 
     @field_validator("password")
     @classmethod
@@ -55,15 +57,16 @@ class UserUpdate(BaseModel):
 
 
 class UserOut(BaseModel):
-    id:         int
-    username:   str
-    email:      Optional[str]
-    role:       str
-    role_id:    int | None
-    role_name:  str
-    enabled:    bool
-    created_at: str
-    last_login: Optional[str]
+    id:                   int
+    username:             str
+    email:                Optional[str]
+    role:                 str
+    role_id:              int | None
+    role_name:            str
+    enabled:              bool
+    must_change_password: bool
+    created_at:           str
+    last_login:           Optional[str]
 
 
 def _row_to_out(u: User, role_name: str | None) -> UserOut:
@@ -75,6 +78,7 @@ def _row_to_out(u: User, role_name: str | None) -> UserOut:
         role_id=u.role_id,
         role_name=role_name or "—",
         enabled=u.enabled,
+        must_change_password=u.must_change_password,
         created_at=u.created_at.isoformat(),
         last_login=u.last_login.isoformat() if u.last_login else None,
     )
@@ -147,6 +151,7 @@ async def create_user(
         role=role.name,
         role_id=body.role_id,
         enabled=body.enabled,
+        must_change_password=body.must_change_password,
     )
     db.add(user)
     await db.commit()
@@ -184,6 +189,7 @@ async def update_user(
     if body.email    is not None: user.email           = body.email
     if body.enabled  is not None: user.enabled         = body.enabled
     if body.password is not None: user.hashed_password = hash_password(body.password)
+    if body.must_change_password is not None: user.must_change_password = body.must_change_password
     if body.role_id  is not None:
         role = (await db.execute(select(Role).where(Role.id == body.role_id))).scalar_one_or_none()
         if not role:

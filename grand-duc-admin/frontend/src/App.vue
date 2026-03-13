@@ -1,6 +1,6 @@
 <template>
   <div>
-    <router-view v-if="!auth.isLoggedIn" />
+    <router-view v-if="!auth.isLoggedIn || $route.path === '/login'" />
 
     <div v-else class="layout">
       <nav class="sidebar">

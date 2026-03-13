@@ -18,33 +18,59 @@
 
       <div v-if="auth.error" class="alert alert-error">{{ auth.error }}</div>
 
-      <div class="form-group" style="margin-bottom:14px">
-        <label class="form-label">Identifiant</label>
-        <input
-          v-model="username"
-          class="form-input"
-          type="text"
-          placeholder="admin"
-          autocomplete="username"
-          @keyup.enter="submit"
-        />
-      </div>
+      <!-- Formulaire de changement de mot de passe obligatoire -->
+      <template v-if="mustChangePassword">
+        <div class="alert" style="background:rgba(139,92,246,.12);border:1px solid var(--accent);color:var(--accent);margin-bottom:16px;padding:10px 14px;border-radius:8px;font-size:13px">
+          Votre mot de passe est temporaire. Veuillez en choisir un nouveau.
+        </div>
+        <div v-if="changeError" class="alert alert-error">{{ changeError }}</div>
 
-      <div class="form-group" style="margin-bottom:20px">
-        <label class="form-label">Mot de passe</label>
-        <input
-          v-model="password"
-          class="form-input"
-          type="password"
-          placeholder="••••••••"
-          autocomplete="current-password"
-          @keyup.enter="submit"
-        />
-      </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Nouveau mot de passe</label>
+          <input v-model="newPassword" class="form-input" type="password" placeholder="••••••••" autocomplete="new-password" @keyup.enter="submitChangePassword" />
+        </div>
+        <div class="form-group" style="margin-bottom:20px">
+          <label class="form-label">Confirmer le mot de passe</label>
+          <input v-model="confirmPassword" class="form-input" type="password" placeholder="••••••••" autocomplete="new-password" @keyup.enter="submitChangePassword" />
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px">
+          Min. 8 caractères, une majuscule, une minuscule et un chiffre.
+        </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center" @click="submitChangePassword" :disabled="changingPassword">
+          {{ changingPassword ? 'Enregistrement…' : 'Définir le mot de passe' }}
+        </button>
+      </template>
 
-      <button class="btn btn-primary" style="width:100%;justify-content:center" @click="submit" :disabled="auth.loading">
-        {{ auth.loading ? 'Connexion…' : 'Se connecter' }}
-      </button>
+      <!-- Formulaire de connexion normal -->
+      <template v-else>
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Identifiant</label>
+          <input
+            v-model="username"
+            class="form-input"
+            type="text"
+            placeholder="admin"
+            autocomplete="username"
+            @keyup.enter="submit"
+          />
+        </div>
+
+        <div class="form-group" style="margin-bottom:20px">
+          <label class="form-label">Mot de passe</label>
+          <input
+            v-model="password"
+            class="form-input"
+            type="password"
+            placeholder="••••••••"
+            autocomplete="current-password"
+            @keyup.enter="submit"
+          />
+        </div>
+
+        <button class="btn btn-primary" style="width:100%;justify-content:center" @click="submit" :disabled="auth.loading">
+          {{ auth.loading ? 'Connexion…' : 'Se connecter' }}
+        </button>
+      </template>
     </div>
   </div>
 </template>
@@ -53,19 +79,52 @@
 import { ref }          from 'vue'
 import { useRouter }    from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { authApi }      from '@/api'
 
 const auth     = useAuthStore()
 const router   = useRouter()
 const username = ref('')
 const password = ref('')
 
+const mustChangePassword = ref(false)
+const newPassword        = ref('')
+const confirmPassword    = ref('')
+const changeError        = ref('')
+const changingPassword   = ref(false)
+
 async function submit() {
   if (!username.value || !password.value) return
   try {
     await auth.login(username.value, password.value)
-    router.push('/')
+    if (auth.user?.must_change_password) {
+      mustChangePassword.value = true
+    } else {
+      router.replace('/')
+    }
   } catch {
     password.value = ''
+  }
+}
+
+async function submitChangePassword() {
+  changeError.value = ''
+  if (!newPassword.value || !confirmPassword.value) {
+    changeError.value = 'Veuillez remplir les deux champs'
+    return
+  }
+  if (newPassword.value !== confirmPassword.value) {
+    changeError.value = 'Les mots de passe ne correspondent pas'
+    return
+  }
+  changingPassword.value = true
+  try {
+    await authApi.changePassword(newPassword.value)
+    await auth.fetchMe()
+    router.replace('/')
+  } catch (e) {
+    changeError.value = e.response?.data?.detail || 'Erreur lors du changement de mot de passe'
+  } finally {
+    changingPassword.value = false
   }
 }
 </script>

@@ -45,9 +45,10 @@ class User(Base):
     hashed_password: Mapped[str]        = mapped_column(Text, nullable=False)
     role:            Mapped[str]        = mapped_column(String(10), default="viewer")
     role_id:         Mapped[int | None] = mapped_column(BigInteger, ForeignKey("roles.id"))
-    enabled:         Mapped[bool]       = mapped_column(Boolean, default=True)
-    created_at:      Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
-    last_login:      Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    enabled:              Mapped[bool]       = mapped_column(Boolean, default=True)
+    must_change_password: Mapped[bool]       = mapped_column(Boolean, default=False, server_default="false")
+    created_at:           Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login:           Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 class UserTheme(Base):
     """Préférences de thème par utilisateur (table séparée pour éviter ALTER sur users)."""

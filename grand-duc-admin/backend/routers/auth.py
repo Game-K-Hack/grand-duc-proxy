@@ -53,19 +53,21 @@ def _record_attempt(ip: str):
 
 
 class TokenResponse(BaseModel):
-    access_token: str
-    token_type:   str = "bearer"
-    username:     str
-    role:         str
+    access_token:         str
+    token_type:           str = "bearer"
+    username:             str
+    role:                 str
+    must_change_password: bool = False
 
 
 class MeResponse(BaseModel):
-    id:          int
-    username:    str
-    email:       str | None
-    role:        str
-    role_id:     int | None = None
-    permissions: dict[str, bool] = {}
+    id:                   int
+    username:             str
+    email:                str | None
+    role:                 str
+    role_id:              int | None = None
+    permissions:          dict[str, bool] = {}
+    must_change_password: bool = False
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -105,7 +107,10 @@ async def login(
     await db.commit()
 
     token = create_access_token({"sub": user.username})
-    return TokenResponse(access_token=token, username=user.username, role=user.role)
+    return TokenResponse(
+        access_token=token, username=user.username, role=user.role,
+        must_change_password=user.must_change_password,
+    )
 
 
 @router.get("/me", response_model=MeResponse)
@@ -121,4 +126,31 @@ async def me(
         role=current_user.role,
         role_id=current_user.role_id,
         permissions=perms,
+        must_change_password=current_user.must_change_password,
     )
+
+
+class ChangePasswordIn(BaseModel):
+    new_password: str
+
+
+@router.post("/change-password")
+async def change_password(
+    body:         ChangePasswordIn,
+    current_user: User         = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    """Permet à l'utilisateur de changer son mot de passe (utilisé après un mot de passe temporaire)."""
+    from routers.users import _validate_password
+    _validate_password(body.new_password)
+
+    await db.execute(
+        update(User)
+        .where(User.id == current_user.id)
+        .values(
+            hashed_password=hash_password(body.new_password),
+            must_change_password=False,
+        )
+    )
+    await db.commit()
+    return {"ok": True}

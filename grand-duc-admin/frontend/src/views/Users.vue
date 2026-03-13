@@ -91,12 +91,21 @@
           </div>
         </div>
 
-        <div class="form-group" style="flex-direction:row;align-items:center;gap:10px">
-          <label class="toggle">
-            <input type="checkbox" v-model="form.enabled" />
-            <span class="toggle-slider"></span>
-          </label>
-          <span class="form-label" style="margin:0">Compte activé</span>
+        <div style="display:flex;gap:20px;flex-wrap:wrap">
+          <div class="form-group" style="flex-direction:row;align-items:center;gap:10px">
+            <label class="toggle">
+              <input type="checkbox" v-model="form.enabled" />
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="form-label" style="margin:0">Compte activé</span>
+          </div>
+          <div class="form-group" style="flex-direction:row;align-items:center;gap:10px">
+            <label class="toggle">
+              <input type="checkbox" v-model="form.must_change_password" />
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="form-label" style="margin:0">Mot de passe temporaire</span>
+          </div>
         </div>
 
         <div class="modal-footer">
@@ -141,7 +150,7 @@ const formError     = ref('')
 const formSuccess   = ref('')
 const currentUserId = ref(null)
 
-const form = ref({ username: '', email: '', password: '', role_id: null, enabled: true })
+const form = ref({ username: '', email: '', password: '', role_id: null, enabled: true, must_change_password: false })
 
 function fmtDate(iso) {
   return new Date(iso).toLocaleString('fr-FR', {
@@ -170,15 +179,18 @@ async function load() {
 function openCreate() {
   editingUser.value = null
   const defaultRole = roles.value.find(r => r.name === 'Lecteur') || roles.value[0]
-  form.value        = { username: '', email: '', password: '', role_id: defaultRole?.id, enabled: true }
+  form.value        = { username: '', email: '', password: '', role_id: defaultRole?.id, enabled: true, must_change_password: false }
   formError.value   = ''
   formSuccess.value = ''
   showModal.value   = true
 }
 
-function openEdit(u) {
-  editingUser.value = u
-  form.value        = { username: u.username, email: u.email || '', password: '', role_id: u.role_id, enabled: u.enabled }
+async function openEdit(u) {
+  // Recharger pour avoir les données à jour (ex: must_change_password modifié par l'utilisateur)
+  await load()
+  const fresh = users.value.find(x => x.id === u.id) || u
+  editingUser.value = fresh
+  form.value        = { username: fresh.username, email: fresh.email || '', password: '', role_id: fresh.role_id, enabled: fresh.enabled, must_change_password: fresh.must_change_password }
   formError.value   = ''
   formSuccess.value = ''
   showModal.value   = true
@@ -190,7 +202,7 @@ async function save() {
   saving.value      = true
   try {
     if (editingUser.value) {
-      const payload = { email: form.value.email, role_id: form.value.role_id, enabled: form.value.enabled }
+      const payload = { email: form.value.email, role_id: form.value.role_id, enabled: form.value.enabled, must_change_password: form.value.must_change_password }
       if (form.value.password) payload.password = form.value.password
       await usersApi.update(editingUser.value.id, payload)
     } else {
