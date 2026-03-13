@@ -4,20 +4,20 @@
         {
             "label": "Grand-Duc Proxy",
             "type": "shell",
-            "command": "cd target/debug ; ./grand-duc-proxy.exe",
+            "command": "cd proxy/target/debug ; ./grand-duc-proxy.exe",
             "dependsOn": ["Rebuild Proxy & restart"],
             "presentation": { "group": "demarrage-complet" }
         },
         {
             "label": "Frontend Vue.JS",
             "type": "shell",
-            "command": "cd grand-duc-admin/frontend ; npm run dev",
+            "command": "cd frontend ; npm run dev",
             "presentation": { "group": "demarrage-complet" }
         },
         {
             "label": "Backend Python",
             "type": "shell",
-            "command": "cd grand-duc-admin/backend ; ./venv/Scripts/activate ; uvicorn main:app --reload --port 8000",
+            "command": "cd backend ; ./venv/Scripts/activate ; uvicorn main:app --reload --port 8000",
             "presentation": { "group": "demarrage-complet" }
         },
         {
@@ -37,7 +37,7 @@
         {
             "label": "Rebuild Proxy & restart",
             "type": "shell",
-            "command": "cd D:/Bureau/grand-duc ; cargo build ; cd target/debug ; ./grand-duc-proxy.exe",
+            "command": "cd D:/Bureau/grand-duc/proxy ; cargo build ; cd target/debug ; ./grand-duc-proxy.exe",
             "group": "build"
         },
     ]

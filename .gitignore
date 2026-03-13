@@ -3,4 +3,4 @@ venv
 .env
 __pycache__
 node_modules
-grand-duc-admin/frontend/dist
+frontend/dist

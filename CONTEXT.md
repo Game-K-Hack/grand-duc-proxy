@@ -15,76 +15,79 @@ utilisateurs par IP, groupes de clients, et interface d'administration web.
 
 ```
 grand-duc/
-├── src/
-│   └── main.rs                        # Proxy Rust (point d'entrée unique)
-├── Cargo.toml
-├── templates/
-│   └── blocked/
-│       └── index.html                 # Page de blocage par défaut (HTML + assets base64)
-├── grand-duc-ca.key                   # Clé privée CA (PKCS#8 DER) — NE PAS VERSIONNER
-├── grand-duc-ca.crt                   # Certificat CA (PEM) — à distribuer aux postes
+├── backend/
+│   ├── main.py                    # Point d'entrée FastAPI + seeding rôles builtin
+│   ├── config.py                  # Settings (pydantic-settings, lit .env)
+│   ├── database.py                # Engine SQLAlchemy async + get_db()
+│   ├── models.py                  # Modèles ORM SQLAlchemy (User, Role, AppSetting…)
+│   ├── security.py                # JWT HS256, require_permission(), require_admin
+│   ├── permissions.py             # ALL_PERMISSIONS (31 clés), labels FR, rôles builtin
+│   ├── .env                       # Variables d'environnement (NE PAS VERSIONNER)
+│   ├── requirements.txt
+│   ├── services/
+│   │   └── email.py               # Envoi e-mails, template HTML, render_template()
+│   └── routers/
+│       ├── __init__.py
+│       ├── auth.py                # POST /api/auth/login, GET /api/auth/me (+ permissions)
+│       ├── rules.py               # CRUD /api/rules
+│       ├── logs.py                # GET /api/logs
+│       ├── stats.py               # GET /api/stats, GET /api/stats/traffic
+│       ├── users.py               # CRUD /api/users (comptes admin, role_id)
+│       ├── roles.py               # CRUD /api/roles + GET /api/roles/permissions
+│       ├── client_groups.py       # CRUD /api/client-groups + règles du groupe
+│       ├── client_users.py        # CRUD /api/client-users + groupes + test-access
+│       ├── tls_bypass.py          # CRUD /api/tls-bypass (exceptions TLS)
+│       ├── killswitch.py          # GET/POST /api/killswitch + historique
+│       ├── certificates.py        # Gestion CA : génération, import, historique
+│       ├── proxy_control.py       # Statut/redémarrage proxy + logs SSE
+│       ├── integrations.py        # CRUD /api/integrations (RMM) + sync
+│       └── settings.py            # SMTP, notifications, templates, thème, page de blocage
 │
-└── grand-duc-admin/
-    ├── backend/
-    │   ├── main.py                    # Point d'entrée FastAPI + seeding rôles builtin
-    │   ├── config.py                  # Settings (pydantic-settings, lit .env)
-    │   ├── database.py                # Engine SQLAlchemy async + get_db()
-    │   ├── models.py                  # Modèles ORM SQLAlchemy (User, Role, AppSetting…)
-    │   ├── security.py                # JWT HS256, require_permission(), require_admin
-    │   ├── permissions.py             # ALL_PERMISSIONS (31 clés), labels FR, rôles builtin
-    │   ├── .env                       # Variables d'environnement (NE PAS VERSIONNER)
-    │   ├── requirements.txt
-    │   ├── services/
-    │   │   └── email.py               # Envoi e-mails, template HTML, render_template()
-    │   └── routers/
-    │       ├── __init__.py
-    │       ├── auth.py                # POST /api/auth/login, GET /api/auth/me (+ permissions)
-    │       ├── rules.py               # CRUD /api/rules
-    │       ├── logs.py                # GET /api/logs
-    │       ├── stats.py               # GET /api/stats, GET /api/stats/traffic
-    │       ├── users.py               # CRUD /api/users (comptes admin, role_id)
-    │       ├── roles.py               # CRUD /api/roles + GET /api/roles/permissions
-    │       ├── client_groups.py       # CRUD /api/client-groups + règles du groupe
-    │       ├── client_users.py        # CRUD /api/client-users + groupes + test-access
-    │       ├── tls_bypass.py          # CRUD /api/tls-bypass (exceptions TLS)
-    │       ├── killswitch.py          # GET/POST /api/killswitch + historique
-    │       ├── certificates.py        # Gestion CA : génération, import, historique
-    │       ├── proxy_control.py       # Statut/redémarrage proxy + logs SSE
-    │       ├── integrations.py        # CRUD /api/integrations (RMM) + sync
-    │       └── settings.py            # SMTP, notifications, templates, thème, page de blocage
-    │
-    └── frontend/
-        ├── package.json
-        ├── vite.config.js             # Proxy /api → http://localhost:8000
-        └── src/
-            ├── main.js
-            ├── App.vue                # Layout + sidebar navigation (permission-aware)
-            ├── assets/
-            │   └── main.css           # Variables CSS, classes utilitaires
-            ├── api/
-            │   └── index.js           # Axios + intercepteurs JWT, cache, helpers par domaine
-            ├── composables/
-            │   └── useTheme.js        # Thèmes prédéfinis, couleurs custom, persistance
-            ├── stores/
-            │   └── auth.js            # Pinia store : token, user, permissions, hasPermission()
-            ├── router/
-            │   └── index.js           # Vue Router avec guards par permissions
-            └── views/
-                ├── Login.vue
-                ├── Dashboard.vue      # Stats + graphique SVG trafic réseau
-                ├── Rules.vue          # CRUD règles regex
-                ├── Logs.vue           # Journal des accès paginé
-                ├── ClientGroups.vue   # Groupes + assignation des règles
-                ├── ClientUsers.vue    # Utilisateurs IP + assignation multi-groupes
-                ├── TestAccess.vue     # Simulateur d'accès utilisateur/URL
-                ├── Users.vue          # Comptes administrateurs (role_id dynamique)
-                ├── Roles.vue          # Gestion des rôles + permissions granulaires
-                ├── TlsBypass.vue      # Exceptions TLS
-                ├── Killswitch.vue     # Interrupteur d'urgence
-                ├── Certificates.vue   # Certificats CA (génération, import, historique)
-                ├── ProxyLogs.vue      # Logs proxy temps réel (SSE)
-                ├── Settings.vue       # SMTP, notifications, templates, apparence, RMM
-                └── Documentation.vue  # Guide intégré avec sommaire interactif
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.js             # Proxy /api → http://localhost:8000
+│   └── src/
+│       ├── main.js
+│       ├── App.vue                # Layout + sidebar navigation (permission-aware)
+│       ├── assets/
+│       │   └── main.css           # Variables CSS, classes utilitaires
+│       ├── api/
+│       │   └── index.js           # Axios + intercepteurs JWT, cache, helpers par domaine
+│       ├── composables/
+│       │   └── useTheme.js        # Thèmes prédéfinis, couleurs custom, persistance
+│       ├── stores/
+│       │   └── auth.js            # Pinia store : token, user, permissions, hasPermission()
+│       ├── router/
+│       │   └── index.js           # Vue Router avec guards par permissions
+│       └── views/
+│           ├── Login.vue
+│           ├── Dashboard.vue      # Stats + graphique SVG trafic réseau
+│           ├── Rules.vue          # CRUD règles regex
+│           ├── Logs.vue           # Journal des accès paginé
+│           ├── ClientGroups.vue   # Groupes + assignation des règles
+│           ├── ClientUsers.vue    # Utilisateurs IP + assignation multi-groupes
+│           ├── TestAccess.vue     # Simulateur d'accès utilisateur/URL
+│           ├── Users.vue          # Comptes administrateurs (role_id dynamique)
+│           ├── Roles.vue          # Gestion des rôles + permissions granulaires
+│           ├── TlsBypass.vue      # Exceptions TLS
+│           ├── Killswitch.vue     # Interrupteur d'urgence
+│           ├── Certificates.vue   # Certificats CA (génération, import, historique)
+│           ├── ProxyLogs.vue      # Logs proxy temps réel (SSE)
+│           ├── Settings.vue       # SMTP, notifications, templates, apparence, RMM
+│           └── Documentation.vue  # Guide intégré avec sommaire interactif
+│
+├── proxy/
+│   ├── src/
+│   │   └── main.rs                        # Proxy Rust (point d'entrée unique)
+│   ├── Cargo.toml
+│   ├── templates/
+│   │   └── blocked/
+│   │       └── index.html                 # Page de blocage par défaut (HTML + assets base64)
+│   ├── grand-duc-ca.key                   # Clé privée CA (PKCS#8 DER) — NE PAS VERSIONNER
+│   └── grand-duc-ca.crt                   # Certificat CA (PEM) — à distribuer aux postes
+│
+└── SQL/
+    └── *.sql  # fichier d'update de base de données
 ```
 
 ---
@@ -330,7 +333,7 @@ Toutes les 5 minutes via `tokio::spawn` :
 
 ### Démarrage
 ```cmd
-# Depuis grand-duc-admin/backend/
+# Depuis backend/
 # Python 3.12 OBLIGATOIRE (Python 3.14 incompatible avec asyncpg + pydantic-core)
 venv\Scripts\activate
 uvicorn main:app --reload --port 8000
@@ -540,7 +543,7 @@ PUT    /api/settings/theme                 → { ok }
 
 ### Démarrage
 ```cmd
-# Depuis grand-duc-admin/frontend/
+# Depuis frontend/
 npm run dev    # http://localhost:5173
 ```
 
