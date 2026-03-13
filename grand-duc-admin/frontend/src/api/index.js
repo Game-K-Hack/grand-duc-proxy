@@ -188,6 +188,8 @@ export const clientUsersApi = {
   // Gestion des groupes de l'utilisateur
   getGroups:  (id)           => api.get(`/client-users/${id}/groups`),
   setGroups:  (id, groupIds) => api.put(`/client-users/${id}/groups`, { group_ids: groupIds }),
+  // IPs inconnues (vues dans les logs mais pas enregistrées)
+  unknownIps: ()             => api.get('/client-users/unknown-ips'),
   // Test d'accès
   testAccess: (body)         => api.post('/client-users/test-access', body),
 }

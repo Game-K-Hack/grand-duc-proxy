@@ -2,13 +2,13 @@ import ipaddress
 import re
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, delete, insert
+from sqlalchemy import select, delete, insert, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, field_validator
 from typing import Optional
 
 from database import get_db
-from models   import ClientUser, ClientGroup, ClientUserGroups, GroupRule, FilterRule
+from models   import ClientUser, ClientGroup, ClientUserGroups, GroupRule, FilterRule, AccessLog
 from security import require_permission
 from models   import User
 
@@ -147,6 +147,48 @@ async def create_client_user(
     await db.commit()
     await db.refresh(u)
     return await build_user_out(db, u)
+
+
+class UnknownIpOut(BaseModel):
+    ip_address:    str
+    request_count: int
+    last_seen:     str
+
+
+@router.get("/unknown-ips", response_model=list[UnknownIpOut])
+async def list_unknown_ips(
+    db:    AsyncSession = Depends(get_db),
+    _user: User = Depends(require_permission("client_users.read")),
+):
+    """IPs privées vues dans access_logs mais absentes de client_users."""
+    known_ips = select(ClientUser.ip_address)
+    rows = (await db.execute(
+        select(
+            AccessLog.client_ip,
+            func.count().label("cnt"),
+            func.max(AccessLog.accessed_at).label("last_seen"),
+        )
+        .where(AccessLog.client_ip.isnot(None))
+        .where(AccessLog.client_ip.notin_(known_ips))
+        .group_by(AccessLog.client_ip)
+        .order_by(func.count().desc())
+        .limit(500)
+    )).all()
+
+    # Ne garder que les IPs privées (RFC 1918 + loopback + link-local)
+    results = []
+    for r in rows:
+        try:
+            addr = ipaddress.ip_address(r.client_ip)
+        except ValueError:
+            continue
+        if addr.is_private or addr.is_loopback:
+            results.append(UnknownIpOut(
+                ip_address=r.client_ip,
+                request_count=r.cnt,
+                last_seen=r.last_seen.isoformat(),
+            ))
+    return results
 
 
 @router.put("/{user_id}", response_model=ClientUserOut)

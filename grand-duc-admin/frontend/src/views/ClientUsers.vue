@@ -10,12 +10,20 @@
       <div class="card" style="padding:0;overflow:hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)">
           <div style="font-weight:600;font-size:13px">Utilisateurs</div>
-          <button v-if="auth.hasPermission('client_users.write')" class="btn btn-primary btn-sm" @click="openCreate">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            Ajouter
-          </button>
+          <div v-if="auth.hasPermission('client_users.write')" style="display:flex;gap:4px">
+            <button class="btn btn-ghost btn-sm" @click="openDiscover" title="Découvrir les IPs non enregistrées">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              Découvrir
+            </button>
+            <button class="btn btn-primary btn-sm" @click="openCreate">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Ajouter
+            </button>
+          </div>
         </div>
 
         <!-- Recherche -->
@@ -237,6 +245,65 @@
         </div>
       </div>
     </div>
+
+    <!-- ── Modal découverte IPs inconnues ──────────────────────────────── -->
+    <div class="modal-overlay" v-if="showDiscover" @click.self="showDiscover = false">
+      <div class="modal" style="width:720px">
+        <div class="modal-title">IPs non enregistrées</div>
+        <p style="color:var(--text-muted);margin-bottom:12px;font-size:13px">
+          IPs vues dans les logs d'accès mais absentes de la liste des utilisateurs.
+        </p>
+
+        <div v-if="discoverLoading" style="padding:20px;text-align:center;color:var(--text-muted)">Chargement…</div>
+
+        <template v-else>
+          <div v-if="!unknownIps.length" style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">
+            Toutes les IPs sont déjà enregistrées.
+          </div>
+          <template v-else>
+            <div style="margin-bottom:8px">
+              <input v-model="discoverSearch" class="form-input" style="height:30px;font-size:12px" placeholder="Filtrer les IPs…" />
+            </div>
+            <div class="table-wrap" style="max-height:340px;overflow-y:auto;overflow-x:hidden">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Adresse IP</th>
+                    <th style="width:90px;text-align:right">Requêtes</th>
+                    <th style="width:130px">Dernière activité</th>
+                    <th style="width:70px"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="ip in filteredUnknownIps" :key="ip.ip_address">
+                    <td><code class="mono" style="font-size:12px">{{ ip.ip_address }}</code></td>
+                    <td style="text-align:right;color:var(--text-muted);font-size:12px">{{ ip.request_count.toLocaleString('fr-FR') }}</td>
+                    <td style="font-size:12px;color:var(--text-muted)">{{ fmtDate(ip.last_seen) }}</td>
+                    <td style="text-align:center">
+                      <button
+                        class="btn btn-primary btn-sm"
+                        style="font-size:11px;padding:2px 8px"
+                        :disabled="registeringIp === ip.ip_address"
+                        @click="registerIp(ip)"
+                      >
+                        {{ registeringIp === ip.ip_address ? '…' : 'Ajouter' }}
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="!filteredUnknownIps.length">
+                    <td colspan="4" style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px">Aucun résultat</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
+        </template>
+
+        <div class="modal-footer" style="margin-top:12px">
+          <button class="btn btn-ghost" @click="showDiscover = false">Fermer</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -258,6 +325,11 @@ const showModal        = ref(false)
 const editing          = ref(null)
 const deleteTarget     = ref(null)
 const form             = ref({ ip_address: '', label: '', hostname: '', os: '' })
+const showDiscover     = ref(false)
+const discoverLoading  = ref(false)
+const discoverSearch   = ref('')
+const unknownIps       = ref([])
+const registeringIp    = ref(null)
 const showAddDropdown  = ref(false)
 const addBtnRef        = ref(null)
 const ddPos            = ref({ top: 0, right: 0 })
@@ -306,6 +378,35 @@ const filteredUsers = computed(() => {
     (u.logged_user || '').toLowerCase().includes(q)
   )
 })
+
+const filteredUnknownIps = computed(() => {
+  if (!discoverSearch.value) return unknownIps.value
+  const q = discoverSearch.value.toLowerCase()
+  return unknownIps.value.filter(ip => ip.ip_address.includes(q))
+})
+
+async function openDiscover() {
+  showDiscover.value = true
+  discoverLoading.value = true
+  discoverSearch.value = ''
+  try {
+    const { data } = await clientUsersApi.unknownIps()
+    unknownIps.value = data
+  } finally {
+    discoverLoading.value = false
+  }
+}
+
+async function registerIp(ip) {
+  registeringIp.value = ip.ip_address
+  try {
+    await clientUsersApi.create({ ip_address: ip.ip_address })
+    unknownIps.value = unknownIps.value.filter(u => u.ip_address !== ip.ip_address)
+    await loadUsers()
+  } finally {
+    registeringIp.value = null
+  }
+}
 
 function fmtDate(iso) {
   if (!iso) return ''
