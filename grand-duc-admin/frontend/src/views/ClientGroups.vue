@@ -18,8 +18,12 @@
           </button>
         </div>
 
+        <div style="padding:8px 10px;border-bottom:1px solid var(--border)">
+          <input v-model="groupSearch" class="form-input" style="height:28px;font-size:12px;width:100%" placeholder="Filtrer…" />
+        </div>
+
         <div
-          v-for="g in groups" :key="g.id"
+          v-for="g in filteredGroups" :key="g.id"
           style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;border-left:3px solid transparent;transition:background .1s"
           :style="selected?.id === g.id ? 'background:var(--surface2);border-left-color:var(--accent);padding-left:11px' : 'padding-left:11px'"
           @click="selectGroup(g)"
@@ -52,8 +56,8 @@
           </div>
         </div>
 
-        <div v-if="!groups.length" style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">
-          Aucun groupe
+        <div v-if="!filteredGroups.length" style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">
+          {{ groupSearch ? 'Aucun groupe ne correspond' : 'Aucun groupe' }}
         </div>
       </div>
 
@@ -203,9 +207,19 @@ const formError   = ref('')
 const showModal   = ref(false)
 const editing     = ref(null)
 const deleteTarget = ref(null)
+const groupSearch  = ref('')
 const ruleSearch   = ref('')
 const showActiveOnly = ref(false)
 const form = ref({ name: '', description: '' })
+
+const filteredGroups = computed(() => {
+  if (!groupSearch.value) return groups.value
+  const q = groupSearch.value.toLowerCase()
+  return groups.value.filter(g =>
+    g.name.toLowerCase().includes(q) ||
+    (g.description || '').toLowerCase().includes(q)
+  )
+})
 
 // ── Vue fusionnée ─────────────────────────────────────────────────────────────
 const rulesWithState = computed(() => {
