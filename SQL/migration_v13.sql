@@ -24,3 +24,17 @@ CREATE INDEX IF NOT EXISTS ix_access_logs_accessed_at         ON access_logs (ac
 CREATE INDEX IF NOT EXISTS ix_access_logs_blocked_accessed_at ON access_logs (blocked, accessed_at);
 CREATE INDEX IF NOT EXISTS ix_access_logs_client_ip           ON access_logs (client_ip);
 CREATE INDEX IF NOT EXISTS ix_access_logs_host                ON access_logs (host);
+
+-- ── Mise à jour des permissions des rôles built-in ────────────────────────
+-- Ajoute les nouvelles permissions (templates, appearance) manquantes dans v12
+UPDATE roles SET permissions = '{"dashboard.read":true,"rules.read":true,"rules.write":true,"logs.read":true,"proxy_logs.read":true,"client_groups.read":true,"client_groups.write":true,"client_users.read":true,"client_users.write":true,"test_access.use":true,"users.read":true,"users.write":true,"tls_bypass.read":true,"tls_bypass.write":true,"killswitch.read":true,"killswitch.write":true,"certificates.read":true,"certificates.write":true,"settings.smtp.read":true,"settings.smtp.write":true,"settings.templates.read":true,"settings.templates.write":true,"settings.appearance.read":true,"settings.appearance.write":true,"settings.rmm.read":true,"settings.rmm.write":true,"roles.read":true,"roles.write":true,"proxy.restart":true}'
+WHERE name = 'Administrateur' AND is_builtin = TRUE;
+
+UPDATE roles SET permissions = '{"dashboard.read":true,"rules.read":true,"logs.read":true,"proxy_logs.read":true,"client_groups.read":true,"client_users.read":true,"users.read":true,"tls_bypass.read":true,"killswitch.read":true,"certificates.read":true,"settings.smtp.read":true,"settings.templates.read":true,"settings.appearance.read":true,"settings.rmm.read":true,"roles.read":true}'
+WHERE name = 'Lecteur' AND is_builtin = TRUE;
+
+-- ── Forcer le changement de mot de passe pour le compte admin initial ─────
+UPDATE users SET must_change_password = TRUE WHERE username = 'admin' AND hashed_password = '$2b$12$rBqfOWBZQkMt1a2W1QaAJO39kHFqCeSjGOZJTfadyrzsdJAqYx1WO';
+
+-- ── Corriger le groupe par défaut (v4 le recrée sans is_default) ──────────
+UPDATE client_groups SET is_default = TRUE WHERE name = 'Défaut';
