@@ -18,13 +18,11 @@ psql -v ON_ERROR_STOP=0 -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<'SQL'
 ALTER TABLE access_logs ADD COLUMN IF NOT EXISTS host TEXT;
 SQL
 
-# 2. Migrations dans l'ordre numérique
-for v in 2 3 4 5 6 7 8 9 10 11 12 13; do
-    FILE="$SQLDIR/migration_v${v}.sql"
-    if [ -f "$FILE" ]; then
-        echo "Grand-Duc: Migration v${v}..."
-        psql -v ON_ERROR_STOP=0 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f "$FILE"
-    fi
+# 2. Migrations dans l'ordre numérique (détection automatique)
+for FILE in $(ls "$SQLDIR"/migration_v*.sql 2>/dev/null | sort -t 'v' -k2 -n); do
+    v=$(echo "$FILE" | grep -oP 'v\K[0-9]+')
+    echo "Grand-Duc: Migration v${v}..."
+    psql -v ON_ERROR_STOP=0 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f "$FILE"
 done
 
 echo "Grand-Duc: Base de données initialisée avec succès."

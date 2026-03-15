@@ -160,6 +160,8 @@ pub struct AppState {
     /// Killswitch : si true, tout le trafic est autorisé sans filtrage.
     /// Vérifié à chaque requête (AtomicBool = lock-free), mis à jour toutes les 10s.
     pub killswitch:   Arc<AtomicBool>,
+    /// Cache du template HTML de la page de blocage (chargé depuis app_settings).
+    pub block_page_cache: Arc<RwLock<String>>,
 }
 
 impl AppState {
@@ -174,10 +176,12 @@ impl AppState {
             rules_cache:  Arc::new(RwLock::new(Vec::new())),
             client_cache: Arc::new(RwLock::new(ClientCache::default())),
             killswitch:   Arc::new(AtomicBool::new(false)),
+            block_page_cache: Arc::new(RwLock::new(String::new())),
         };
         state.refresh_rules_cache().await?;
         state.refresh_client_cache().await?;
         state.refresh_killswitch().await?;
+        state.refresh_block_page().await?;
         Ok(state)
     }
 
@@ -304,6 +308,25 @@ impl AppState {
         } else if !active && was {
             info!("🟢 Killswitch désactivé — filtrage rétabli.");
         }
+        Ok(())
+    }
+
+    // ── Page de blocage ───────────────────────────────────────────────────────
+
+    /// Recharge le template de la page de blocage depuis la DB.
+    pub async fn refresh_block_page(&self) -> Result<()> {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT value FROM app_settings WHERE key = 'block_page_template'"
+        )
+        .fetch_optional(&self.db_pool)
+        .await?;
+
+        let html = row.map(|(v,)| v).unwrap_or_else(|| {
+            "<html><head></head><body><h1>Accès bloqué</h1></body></html>".to_owned()
+        });
+
+        *self.block_page_cache.write().await = html;
+        info!("Cache de la page de blocage rafraîchi");
         Ok(())
     }
 
@@ -561,7 +584,7 @@ impl HttpHandler for ProxyHandler {
             self.state.log_access_background(
                 client_ip, effective_url.clone(), method, true, user_agent,
             );
-            return RequestOrResponse::Response(build_blocked_response(&effective_url));
+            return RequestOrResponse::Response(build_blocked_response(&effective_url, &self.state).await);
         }
 
         // ── 6. Trafic autorisé ────────────────────────────────────────────
@@ -652,18 +675,13 @@ fn serve_asset(path: &str) -> Response<Body> {
     }
 }
 
-/// Retourne l'index.html du build "blocked" en y injectant l'URL bloquée.
+/// Retourne la page de blocage (depuis le cache DB) en y injectant l'URL bloquée.
 /// Le frontend la récupère via window.__BLOCKED_URL__
-fn build_blocked_response(url: &str) -> Response<Body> {
-    let index_path = resolve_path("templates/blocked/index.html");
-    let index = std::fs::read_to_string(&index_path)
-        .unwrap_or_else(|e| {
-            error!("Impossible de lire {:?}: {}", index_path, e);
-            "<html><body>Accès bloqué</body></html>".to_owned()
-        });
+async fn build_blocked_response(url: &str, state: &AppState) -> Response<Body> {
+    let index = state.block_page_cache.read().await.clone();
 
     let injection = format!(
-        r#"<base href="https://grand-duc.proxy/blocked/"><script>window.__BLOCKED_URL__ = "{}";</script>"#,
+        r#"<script>window.__BLOCKED_URL__ = "{}";</script>"#,
         html_escape(url)
     );
 
@@ -922,7 +940,10 @@ async fn main() -> Result<()> {
                 }
                 if let Err(e) = state_bg.refresh_client_cache().await {
                     error!("Rafraîchissement clients échoué: {}", e);
-                } 
+                }
+                if let Err(e) = state_bg.refresh_block_page().await {
+                    error!("Rafraîchissement page de blocage échoué: {}", e);
+                }
             }
         });
     }
