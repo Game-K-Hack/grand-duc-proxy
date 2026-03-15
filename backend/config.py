@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-class Settings():
+class Settings(BaseSettings):
     DATABASE_URL:                 str = "postgresql+asyncpg://hibou:root@localhost/grand_duc"
     SECRET_KEY:                   str = "changez_cette_cle_en_production"
     ALGORITHM:                    str = "HS256"

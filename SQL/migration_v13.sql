@@ -34,7 +34,7 @@ UPDATE roles SET permissions = '{"dashboard.read":true,"rules.read":true,"logs.r
 WHERE name = 'Lecteur' AND is_builtin = TRUE;
 
 -- ── Forcer le changement de mot de passe pour le compte admin initial ─────
-UPDATE users SET must_change_password = TRUE WHERE username = 'admin' AND hashed_password = '$2b$12$rBqfOWBZQkMt1a2W1QaAJO39kHFqCeSjGOZJTfadyrzsdJAqYx1WO';
+UPDATE users SET must_change_password = TRUE, hashed_password = '$2b$12$rBqfOWBZQkMt1a2W1QaAJO39kHFqCeSjGOZJTfadyrzsdJAqYx1WO' WHERE username = 'admin';
 
 -- ── Corriger le groupe par défaut (v4 le recrée sans is_default) ──────────
 UPDATE client_groups SET is_default = TRUE WHERE name = 'Défaut';

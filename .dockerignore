@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Node
+frontend/node_modules
+frontend/dist
+
+# Python
+backend/__pycache__
+backend/.env
+backend/venv
+*.pyc
+
+# Rust
+proxy/target
+
+# Docker
+.dockerignore
+docker-compose*.yml
+
+# Misc
+*.md
+.claude/

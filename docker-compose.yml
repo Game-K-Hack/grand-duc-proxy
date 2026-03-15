@@ -1,0 +1,113 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Grand-Duc — Docker Compose (base)
+# ─────────────────────────────────────────────────────────────────────────────
+# Windows (dev) : docker compose up --build
+#   → DB + Backend + Frontend dans Docker, Proxy en natif sur Windows
+#   → La DB expose le port 5432 pour que le proxy natif s'y connecte
+#
+# Linux (prod)  : docker compose --profile linux up --build
+#   → Tout dans Docker, proxy en network_mode: host
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Base de données ─────────────────────────────────────────────────────
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hibou}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
+      POSTGRES_DB: ${POSTGRES_DB:-grand_duc}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Scripts SQL accessibles au script d'init
+      - ./SQL:/docker-entrypoint-initdb.d/SQL:ro
+      # Script d'init qui exécute les migrations dans le bon ordre
+      - ./docker/docker-init-db.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+    networks:
+      - backend-net
+    # Exposé sur localhost pour que le proxy natif Windows s'y connecte
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hibou} -d ${POSTGRES_DB:-grand_duc}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Backend Python (API) ───────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-hibou}:${POSTGRES_PASSWORD:-root}@db:5432/${POSTGRES_DB:-grand_duc}"
+      SECRET_KEY: "${SECRET_KEY:-changez_cette_cle_en_production}"
+      ADMIN_CORS_ORIGIN: "http://localhost"
+      CERT_DIR: /shared/certs
+      PROXY_WORK_DIR: /shared/proxy
+      PROXY_LOG_FILE: /shared/proxy/grand-duc.log
+      PROXY_EXE: grand-duc-proxy
+    volumes:
+      - certs:/shared/certs
+      - proxy-data:/shared/proxy
+      # Socket Docker pour contrôler le conteneur proxy (restart/status)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - backend-net
+      - frontend-net
+
+  # ── Frontend Vue.js (Nginx) ────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - frontend-net
+
+  # ── Proxy Rust (Linux uniquement — activé via --profile linux) ─────────
+  proxy:
+    profiles: ["linux"]
+    build:
+      context: .
+      dockerfile: docker/proxy.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL_PROXY: "postgresql://${POSTGRES_USER:-hibou}:${POSTGRES_PASSWORD:-root}@localhost:5432/${POSTGRES_DB:-grand_duc}"
+      PROXY_ADDR: "0.0.0.0:8080"
+      RUST_LOG: "grand_duc=info"
+      GRAND_DUC_ROOT: /app
+    volumes:
+      - certs:/app/certs
+      - proxy-data:/app/data
+    # network_mode: host → accès direct à toutes les interfaces réseau
+    # Le proxy peut écouter sur n'importe quelle IP du serveur
+    # ⚠️ Rend `ports:` et `networks:` inutiles
+    network_mode: host
+
+# ── Réseaux ──────────────────────────────────────────────────────────────────
+networks:
+  backend-net:
+    driver: bridge
+
+  frontend-net:
+    driver: bridge
+
+# ── Volumes persistants ──────────────────────────────────────────────────────
+volumes:
+  pgdata:
+  certs:
+  proxy-data:
