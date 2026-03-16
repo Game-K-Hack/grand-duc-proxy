@@ -107,12 +107,10 @@ Le proxy écoute sur `0.0.0.0:8080` par défaut.
 
 - **Docker** et **Docker Compose** v2
 
-#### 1. Cloner et lancer
+#### Installation en une commande
 
 ```bash
-git clone https://github.com/votre-org/grand-duc.git
-cd grand-duc
-docker compose --profile linux up --build -d
+git clone https://github.com/Game-K-Hack/grand-duc-proxy.git && cd grand-duc-proxy && docker compose --profile linux up --build -d
 ```
 
 Cela démarre les 4 services :
