@@ -625,6 +625,16 @@
       </div>
     </div>
 
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- Onglet : Comptes                                                      -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <UsersPanel v-if="activeTab === 'users' && auth.hasPermission('users.read')" />
+
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- Onglet : Rôles                                                        -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <RolesPanel v-if="activeTab === 'roles' && auth.hasPermission('roles.read')" />
+
   </div>
 </template>
 
@@ -633,6 +643,8 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { settingsApi, integrationsApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useTheme, PRESETS, COLOR_LABELS } from '@/composables/useTheme'
+import UsersPanel from '@/views/Users.vue'
+import RolesPanel from '@/views/Roles.vue'
 
 const auth = useAuthStore()
 const theme = useTheme()
@@ -650,6 +662,12 @@ const tabs = computed(() => {
   t.push({ key: 'appearance', label: 'Apparence' })
   if (auth.hasPermission('settings.rmm.read')) {
     t.push({ key: 'rmm', label: 'Intégrations RMM' })
+  }
+  if (auth.hasPermission('users.read')) {
+    t.push({ key: 'users', label: 'Comptes' })
+  }
+  if (auth.hasPermission('roles.read')) {
+    t.push({ key: 'roles', label: 'Rôles' })
   }
   return t
 })

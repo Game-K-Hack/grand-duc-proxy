@@ -163,7 +163,7 @@ async def generate_cert(
     now = datetime.now(timezone.utc)
     subject = issuer = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME,       "Grand-Duc Proxy CA"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "SOCODEP"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Grand-Duc"),
         x509.NameAttribute(NameOID.COUNTRY_NAME,      "FR"),
     ])
     cert = (

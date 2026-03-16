@@ -34,9 +34,4 @@ GRANT USAGE, SELECT ON SEQUENCE users_id_seq TO hibou;
 -- ── Compte admin initial (mot de passe : changeme — à modifier immédiatement) ─
 -- Hash bcrypt de "changeme" généré hors-ligne
 INSERT INTO users (username, email, hashed_password, role)
-VALUES (
-    'admin',
-    'admin@socodep.fr',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.iK8i',
-    'admin'
-) ON CONFLICT (username) DO NOTHING;
+VALUES ('admin', '', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.iK8i', 'admin') ON CONFLICT (username) DO NOTHING;

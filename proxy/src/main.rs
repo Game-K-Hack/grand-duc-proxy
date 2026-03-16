@@ -741,7 +741,7 @@ fn build_ca() -> Result<RcgenAuthority> {
         let mut params = CertificateParams::default();
         params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
         params.distinguished_name.push(rcgen::DnType::CommonName,       "Grand-Duc Proxy CA");
-        params.distinguished_name.push(rcgen::DnType::OrganizationName, "SOCODEP");
+        params.distinguished_name.push(rcgen::DnType::OrganizationName, "Grand-Duc");
         params.distinguished_name.push(rcgen::DnType::CountryName,      "FR");
         params.not_before = rcgen::date_time_ymd(2025, 1, 1);
         params.not_after  = rcgen::date_time_ymd(2035, 1, 1);

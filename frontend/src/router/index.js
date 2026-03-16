@@ -17,6 +17,7 @@ import ProxyLogs     from '@/views/ProxyLogs.vue'
 import Roles         from '@/views/Roles.vue'
 import Settings      from '@/views/Settings.vue'
 import Documentation from '@/views/Documentation.vue'
+import About         from '@/views/About.vue'
 
 const routes = [
   { path: '/login',         name: 'Login',        component: Login,         meta: { public: true } },
@@ -34,6 +35,7 @@ const routes = [
   { path: '/roles',         name: 'Roles',        component: Roles,         meta: { permissions: ['roles.read'] } },
   { path: '/settings',      name: 'Settings',     component: Settings },
   { path: '/documentation', name: 'Documentation', component: Documentation },
+  { path: '/about',         name: 'About',         component: About },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 

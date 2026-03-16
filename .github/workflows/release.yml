@@ -1,0 +1,200 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-proxy:
+    name: Build proxy (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: grand-duc-proxy
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: grand-duc-proxy.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build proxy (release)
+        working-directory: proxy
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload proxy artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: proxy-${{ matrix.target }}
+          path: proxy/target/${{ matrix.target }}/release/${{ matrix.artifact }}
+
+  build-frontend:
+    name: Build frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install & build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
+  package-release:
+    name: Package & publish release
+    needs: [build-proxy, build-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Package Linux bundle
+        run: |
+          mkdir -p bundle-linux/SQL bundle-linux/backend bundle-linux/frontend bundle-linux/docker
+          # Proxy binary
+          cp artifacts/proxy-x86_64-unknown-linux-gnu/grand-duc-proxy bundle-linux/
+          chmod +x bundle-linux/grand-duc-proxy
+          # Backend
+          cp -r backend/* bundle-linux/backend/
+          rm -f bundle-linux/backend/.env
+          # Frontend (pre-built)
+          cp -r artifacts/frontend-dist bundle-linux/frontend/dist
+          # SQL migrations
+          cp SQL/*.sql bundle-linux/SQL/
+          # Docker files
+          cp docker-compose.yml bundle-linux/
+          cp docker/docker-init-db.sh bundle-linux/docker/
+          cp docker/*.Dockerfile bundle-linux/docker/
+          # Config
+          cp .env.docker bundle-linux/.env.example
+          cp .dockerignore bundle-linux/
+          # Start script
+          cat > bundle-linux/start.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          echo "=== Grand-Duc — Démarrage ==="
+
+          if [ ! -f .env ]; then
+              echo "Copie de .env.example vers .env — adaptez les valeurs."
+              cp .env.example .env
+          fi
+
+          # Charger les variables
+          set -a; source .env; set +a
+
+          echo "[1/4] Vérification de PostgreSQL..."
+          until pg_isready -h "${PGHOST:-localhost}" -U "${POSTGRES_USER:-hibou}" -d "${POSTGRES_DB:-grand_duc}" 2>/dev/null; do
+              echo "  En attente de PostgreSQL..."
+              sleep 2
+          done
+
+          echo "[2/4] Application des migrations..."
+          psql -U "${POSTGRES_USER:-hibou}" -d "${POSTGRES_DB:-grand_duc}" -f SQL/init.sql 2>/dev/null || true
+          for f in $(ls SQL/migration_v*.sql 2>/dev/null | sort -t 'v' -k2 -n); do
+              psql -U "${POSTGRES_USER:-hibou}" -d "${POSTGRES_DB:-grand_duc}" -f "$f" 2>/dev/null || true
+          done
+          echo "  Migrations OK."
+
+          echo "[3/4] Démarrage du backend..."
+          cd backend
+          pip install -q -r requirements.txt 2>/dev/null
+          uvicorn main:app --host 0.0.0.0 --port 8000 &
+          BACKEND_PID=$!
+          cd ..
+
+          echo "[4/4] Démarrage du proxy..."
+          ./grand-duc-proxy &
+          PROXY_PID=$!
+
+          echo ""
+          echo "=== Grand-Duc est prêt ==="
+          echo "  Proxy     : http://0.0.0.0:${PROXY_ADDR##*:}"
+          echo "  Backend   : http://0.0.0.0:8000"
+          echo "  Frontend  : servir frontend/dist/ avec nginx ou un serveur statique"
+          echo ""
+          echo "Ctrl+C pour arrêter."
+
+          trap "kill $BACKEND_PID $PROXY_PID 2>/dev/null; exit 0" INT TERM
+          wait
+          EOF
+          chmod +x bundle-linux/start.sh
+          cd bundle-linux && tar czf ../grand-duc-linux-amd64.tar.gz . && cd ..
+
+      - name: Package Windows bundle
+        run: |
+          mkdir -p bundle-windows/SQL bundle-windows/backend bundle-windows/frontend
+          # Proxy binary
+          cp artifacts/proxy-x86_64-pc-windows-msvc/grand-duc-proxy.exe bundle-windows/
+          # Backend
+          cp -r backend/* bundle-windows/backend/
+          rm -f bundle-windows/backend/.env
+          # Frontend (pre-built)
+          cp -r artifacts/frontend-dist bundle-windows/frontend/dist
+          # SQL migrations
+          cp SQL/*.sql bundle-windows/SQL/
+          # Config
+          cp .env.docker bundle-windows/.env.example
+          # Start script
+          cat > bundle-windows/start.bat << 'EOF'
+          @echo off
+          echo === Grand-Duc — Demarrage ===
+
+          if not exist .env (
+              echo Copie de .env.example vers .env
+              copy .env.example .env
+          )
+
+          echo [1/3] Installation des dependances Python...
+          cd backend
+          pip install -q -r requirements.txt
+          cd ..
+
+          echo [2/3] Demarrage du backend...
+          start /B cmd /c "cd backend && uvicorn main:app --host 0.0.0.0 --port 8000"
+
+          echo [3/3] Demarrage du proxy...
+          start /B grand-duc-proxy.exe
+
+          echo.
+          echo === Grand-Duc est pret ===
+          echo   Proxy   : http://0.0.0.0:8080
+          echo   Backend : http://0.0.0.0:8000
+          echo   Frontend: ouvrir frontend\dist\index.html ou servir avec un serveur web
+          echo.
+          pause
+          EOF
+          cd bundle-windows && zip -r ../grand-duc-windows-amd64.zip . && cd ..
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            grand-duc-linux-amd64.tar.gz
+            grand-duc-windows-amd64.zip

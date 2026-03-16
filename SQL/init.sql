@@ -75,24 +75,24 @@ CREATE TRIGGER set_updated_at
 -- Les patterns sont des expressions régulières Rust (crate `regex`).
 
 INSERT INTO filter_rules (pattern, action, description, priority) VALUES
-    -- Très haute priorité : menaces connues
+    -- menaces connues
     ('(?i)(malware|ransomware|phishing|exploit-kit)',
-     'block', 'Contenu malveillant connu', 1),
+     'block', 'Contenu malveillant connu', 10),
 
     -- Téléchargements exécutables
     ('(?i)\.(exe|msi|bat|cmd|ps1|vbs|js|jar)(\?.*)?$',
-     'block', 'Téléchargements exécutables', 5),
+     'block', 'Téléchargements exécutables', 10),
 
     -- Réseaux sociaux
     ('^https?://(www\.)?(facebook|instagram|tiktok|snapchat|twitter|x)\.com',
-     'block', 'Réseaux sociaux', 10),
+     'block', 'Réseaux sociaux', 1),
 
     -- Streaming vidéo grand public
     ('^https?://(www\.)?(youtube|netflix|twitch|dailymotion)\.com',
-     'block', 'Streaming vidéo non professionnel', 20),
+     'block', 'Streaming vidéo non professionnel', 2),
 
     -- Exemple de liste blanche (allow en priorité basse surclasse tout)
-    ('^https?://(www\.)?socodep\.fr',
-     'allow', 'Site SOCODEP — toujours autorisé', 200)
+    ('^https?://(www\.)?github\.com/Game-K-Hack',
+     'allow', 'Toujours autoriser le profil de l''auteur', 9999)
 
 ON CONFLICT DO NOTHING;

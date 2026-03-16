@@ -103,20 +103,6 @@
             Killswitch
           </router-link>
 
-          <router-link v-if="auth.hasPermission('users.read')" class="nav-item" :class="{ active: $route.name === 'Users' }" to="/users">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="8" r="4"/>
-              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-            </svg>
-            Comptes
-          </router-link>
-
-          <router-link v-if="auth.hasPermission('roles.read')" class="nav-item" :class="{ active: $route.name === 'Roles' }" to="/roles">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-            </svg>
-            Rôles
-          </router-link>
         </template>
 
         <router-link class="nav-item" :class="{ active: $route.name === 'Settings' }" to="/settings">
@@ -127,14 +113,22 @@
           Paramètres
         </router-link>
 
-        <router-link class="nav-item" :class="{ active: $route.name === 'Documentation' }" to="/documentation">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
-          </svg>
-          Documentation
-        </router-link>
-
         <div class="sidebar-bottom">
+          <router-link class="nav-item" :class="{ active: $route.name === 'Documentation' }" to="/documentation">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
+            </svg>
+            Documentation
+          </router-link>
+
+          <router-link class="nav-item" :class="{ active: $route.name === 'About' }" to="/about">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 16v-4"/><circle cx="12" cy="8" r="0.5" fill="currentColor"/>
+            </svg>
+            À propos
+          </router-link>
+
           <div class="nav-item" @click="logout">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>

@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/bin/sh
 # ─────────────────────────────────────────────────────────────────────────────
 # Grand-Duc — Initialisation DB Docker
 # Exécute init.sql puis les migrations dans l'ordre numérique correct.
 # Ce script est lancé par PostgreSQL via docker-entrypoint-initdb.d
+# Note : Alpine utilise BusyBox (sh, pas bash)
 # ─────────────────────────────────────────────────────────────────────────────
-set -e
 
 SQLDIR=/docker-entrypoint-initdb.d/SQL
 
@@ -20,7 +20,7 @@ SQL
 
 # 2. Migrations dans l'ordre numérique (détection automatique)
 for FILE in $(ls "$SQLDIR"/migration_v*.sql 2>/dev/null | sort -t 'v' -k2 -n); do
-    v=$(echo "$FILE" | grep -oP 'v\K[0-9]+')
+    v=$(echo "$FILE" | sed 's/.*_v\([0-9]*\)\.sql/\1/')
     echo "Grand-Duc: Migration v${v}..."
     psql -v ON_ERROR_STOP=0 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f "$FILE"
 done
