@@ -1,6 +1,4 @@
-# Grand-Duc
-
-Proxy HTTP/HTTPS d'entreprise avec interface d'administration — Pure Rust, zéro OpenSSL.
+![banner](./frontend/src/assets/banner.png)
 
 ## Architecture
 
