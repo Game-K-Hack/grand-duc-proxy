@@ -1,3 +1,9 @@
+<script setup lang="ts">
+  let appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
+  appVersion = appVersion.toLocaleUpperCase();
+  if (!appVersion.startsWith("v") && appVersion !== "DEV") { appVersion = "V" + appVersion }
+</script>
+
 <template>
   <div class="allbox">
     <div class="page-header rmmb">
@@ -14,7 +20,7 @@
           <h2 class="about-name">Grand-Duc</h2>
           <p class="about-tagline">Proxy HTTP/HTTPS d'entreprise — Pure Rust, zero OpenSSL</p>
           <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-            <span class="badge" style="background:var(--accent);color:#fff">v0.1.0</span>
+            <span class="badge" style="background:var(--accent);color:#fff">{{ appVersion }}</span>
             <span class="badge" style="background:var(--surface2);color:var(--text-muted)">Rust + Python + Vue.js</span>
             <span class="badge" style="background:var(--surface2);color:var(--green)">Open Source</span>
           </div>
@@ -30,14 +36,10 @@
           Pourquoi "Grand-Duc" ?
         </div>
         <p class="about-text">
-          Le <strong style="color:var(--accent)">Grand-Duc</strong> est le plus grand des hiboux
-          europeens. Rapace nocturne repute pour sa vision exceptionnelle et son silence en vol,
-          il surveille son territoire avec une efficacite redoutable.
+          Le <strong style="color:var(--accent)">Grand-Duc</strong> est le plus grand des hiboux européens. Rapace nocturne réputée pour sa vision exceptionnelle et son silence en vol, il surveille son territoire avec une efficacité redoutable.
         </p>
         <p class="about-text">
-          Comme son homonyme, ce proxy observe tout le trafic reseau avec precision,
-          filtre silencieusement les menaces, et protege le perimetre sans ralentir le flux.
-          Le hibou voit tout — le proxy aussi.
+          Comme son homonyme, ce proxy observe tout le trafic réseau avec précision, filtre silencieusement les menaces, et protège le périmètre sans ralentir le flux. Le hibou voit tout — le proxy aussi.
         </p>
       </div>
     </div>

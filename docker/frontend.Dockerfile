@@ -11,7 +11,8 @@ COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
 
 COPY frontend/ .
-RUN npm run build
+ARG VITE_APP_VERSION=docker
+RUN VITE_APP_VERSION=${VITE_APP_VERSION} npm run build
 
 # ── Stage 2 : Nginx ─────────────────────────────────────────────────────────
 FROM nginx:alpine

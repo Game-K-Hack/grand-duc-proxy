@@ -53,6 +53,7 @@ services:
       PROXY_WORK_DIR: /shared/proxy
       PROXY_LOG_FILE: /shared/proxy/grand-duc.log
       PROXY_EXE: grand-duc-proxy
+      PROXY_CONTAINER_NAME: grand-duc-proxy
     volumes:
       - certs:/shared/certs
       - proxy-data:/shared/proxy
@@ -77,6 +78,7 @@ services:
 
   # ── Proxy Rust (Linux uniquement — activé via --profile linux) ─────────
   proxy:
+    container_name: grand-duc-proxy
     profiles: ["linux"]
     build:
       context: .
