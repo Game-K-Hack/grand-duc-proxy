@@ -1,7 +1,7 @@
 <script setup lang="ts">
   let appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
   appVersion = appVersion.toLocaleUpperCase();
-  if (!appVersion.startsWith("v") && appVersion !== "DEV") { appVersion = "V" + appVersion }
+  if (!appVersion.startsWith("v") && appVersion !== "DEV" && appVersion !== "DOCKER") { appVersion = "V" + appVersion }
 </script>
 
 <template>

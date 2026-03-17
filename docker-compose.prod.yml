@@ -1,0 +1,97 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Grand-Duc — Docker Compose Production
+# ─────────────────────────────────────────────────────────────────────────────
+# Installation :
+#   curl -fsSL https://raw.githubusercontent.com/Game-K-Hack/grand-duc-proxy/main/docker-compose.prod.yml -o docker-compose.yml
+#   curl -fsSL https://raw.githubusercontent.com/Game-K-Hack/grand-duc-proxy/main/.env.docker -o .env
+#   docker compose --profile linux up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Base de données ─────────────────────────────────────────────────────
+  db:
+    image: ghcr.io/game-k-hack/grand-duc-proxy-db:latest
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hibou}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
+      POSTGRES_DB: ${POSTGRES_DB:-grand_duc}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend-net
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hibou} -d ${POSTGRES_DB:-grand_duc}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Backend Python (API) ───────────────────────────────────────────────
+  backend:
+    image: ghcr.io/game-k-hack/grand-duc-proxy-backend:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-hibou}:${POSTGRES_PASSWORD:-root}@db:5432/${POSTGRES_DB:-grand_duc}"
+      SECRET_KEY: "${SECRET_KEY:-changez_cette_cle_en_production}"
+      ADMIN_CORS_ORIGIN: "http://localhost"
+      CERT_DIR: /shared/certs
+      PROXY_WORK_DIR: /shared/proxy
+      PROXY_LOG_FILE: /shared/proxy/grand-duc.log
+      PROXY_EXE: grand-duc-proxy
+      PROXY_CONTAINER_NAME: grand-duc-proxy
+    volumes:
+      - certs:/shared/certs
+      - proxy-data:/shared/proxy
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - backend-net
+      - frontend-net
+
+  # ── Frontend Vue.js (Nginx) ────────────────────────────────────────────
+  frontend:
+    image: ghcr.io/game-k-hack/grand-duc-proxy-frontend:latest
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - frontend-net
+
+  # ── Proxy Rust (Linux — activé via --profile linux) ────────────────────
+  proxy:
+    container_name: grand-duc-proxy
+    profiles: ["linux"]
+    image: ghcr.io/game-k-hack/grand-duc-proxy-proxy:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL_PROXY: "postgresql://${POSTGRES_USER:-hibou}:${POSTGRES_PASSWORD:-root}@localhost:5432/${POSTGRES_DB:-grand_duc}"
+      PROXY_ADDR: "0.0.0.0:8080"
+      RUST_LOG: "grand_duc=info"
+      GRAND_DUC_ROOT: /app
+    volumes:
+      - certs:/app/certs
+      - proxy-data:/app/data
+    network_mode: host
+
+# ── Réseaux ──────────────────────────────────────────────────────────────────
+networks:
+  backend-net:
+    driver: bridge
+  frontend-net:
+    driver: bridge
+
+# ── Volumes persistants ──────────────────────────────────────────────────────
+volumes:
+  pgdata:
+  certs:
+  proxy-data:

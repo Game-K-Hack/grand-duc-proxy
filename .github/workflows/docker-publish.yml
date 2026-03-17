@@ -21,6 +21,8 @@ jobs:
     strategy:
       matrix:
         include:
+          - service: db
+            dockerfile: docker/db.Dockerfile
           - service: backend
             dockerfile: docker/backend.Dockerfile
           - service: frontend

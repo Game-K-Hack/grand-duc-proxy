@@ -1,5 +1,13 @@
 ![banner](./frontend/src/assets/banner.png)
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/Game-K-Hack/grand-duc-proxy/main/install.sh | sh
+```
+
+> Proxy HTTP/HTTPS d'entreprise en Rust — filtrage intelligent, interception TLS, interface d'administration complète. Une commande, c'est pret.
+
+---
+
 ## Architecture
 
 | Composant | Techno | Rôle |
