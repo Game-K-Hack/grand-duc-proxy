@@ -209,12 +209,12 @@
 
         <div class="form-group" style="margin-bottom:14px">
           <label class="form-label">Nom / étiquette</label>
-          <input v-model="form.label" class="form-input" placeholder="Ex: Poste Jean-Marie" @keyup.enter="save" />
+          <input v-model="form.label" class="form-input" placeholder="Ex: Poste utilisateur" @keyup.enter="save" />
         </div>
 
         <div class="form-group" style="margin-bottom:14px">
           <label class="form-label">Nom d'hôte</label>
-          <input v-model="form.hostname" class="form-input" placeholder="PC-JMARIE" @keyup.enter="save" />
+          <input v-model="form.hostname" class="form-input" placeholder="PC-USER" @keyup.enter="save" />
         </div>
 
         <div class="form-group" style="margin-bottom:20px">

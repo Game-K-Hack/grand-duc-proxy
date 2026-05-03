@@ -176,8 +176,8 @@
           <table class="doc-table" style="margin-top:12px">
             <thead><tr><th>Utilisateur</th><th>Groupe</th><th>Résultat</th></tr></thead>
             <tbody>
-              <tr><td>Marie (IP inconnue)</td><td>Défaut</td><td><span class="badge badge-block">bloqué</span></td></tr>
-              <tr><td>Jean (sans groupe)</td><td>Défaut</td><td><span class="badge badge-block">bloqué</span></td></tr>
+              <tr><td>Bob (IP inconnue)</td><td>Défaut</td><td><span class="badge badge-block">bloqué</span></td></tr>
+              <tr><td>Alice (sans groupe)</td><td>Défaut</td><td><span class="badge badge-block">bloqué</span></td></tr>
               <tr><td>Paul (Professeurs)</td><td>Professeurs</td><td><span class="badge badge-allow">autorisé</span> — aucune règle active dans son groupe</td></tr>
             </tbody>
           </table>
@@ -258,7 +258,7 @@
           <h2 class="doc-title">Gestion des utilisateurs clients</h2>
           <p class="doc-p">Les utilisateurs clients sont identifiés par leur <strong>adresse IP</strong>. Le proxy enregistre automatiquement l'IP de chaque machine qui passe par lui.</p>
           <ul class="doc-list">
-            <li><strong>Label</strong> — nom affiché dans les journaux et le test d'accès (ex : "PC-Marie", "Salle-Info-01")</li>
+            <li><strong>Label</strong> — nom affiché dans les journaux et le test d'accès (ex : "PC-USER", "Salle-Info-01")</li>
             <li><strong>Groupes</strong> — un utilisateur peut être dans zéro, un ou plusieurs groupes</li>
             <li>Sans groupe → groupe Défaut appliqué</li>
           </ul>

@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS client_groups (
 CREATE TABLE IF NOT EXISTS client_users (
     id          BIGSERIAL   PRIMARY KEY,
     ip_address  TEXT        NOT NULL UNIQUE,
-    label       TEXT,                                    -- nom lisible, ex: "Poste Jean-Marie"
+    label       TEXT,                                    -- nom lisible, ex: "Poste Utilisateur"
     group_id    BIGINT      REFERENCES client_groups(id) ON DELETE SET NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

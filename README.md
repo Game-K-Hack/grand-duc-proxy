@@ -1,3 +1,5 @@
+![banner](./frontend/src/assets/claudebanner.png)
+
 ![banner](./frontend/src/assets/banner.png)
 
 ```bash

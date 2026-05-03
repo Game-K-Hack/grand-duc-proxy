@@ -8,11 +8,11 @@ class Settings(BaseSettings):
     ADMIN_CORS_ORIGIN:            str = "http://localhost:5173"
     # Répertoire contenant les fichiers grand-duc-ca.crt / grand-duc-ca.key
     # Doit correspondre au répertoire de travail du proxy au démarrage.
-    CERT_DIR:                     str = "D:/Bureau/grand-duc/proxy/target/debug"
+    CERT_DIR:                     str = "./proxy/target/debug"
     # Contrôle du proxy Rust
-    PROXY_EXE:                    str = "D:/Bureau/grand-duc/proxy/target/debug/grand-duc-proxy.exe"
-    PROXY_WORK_DIR:               str = "D:/Bureau/grand-duc/proxy/target/debug"
-    PROXY_LOG_FILE:               str = "D:/Bureau/grand-duc/proxy/target/debug/grand-duc.log"
+    PROXY_EXE:                    str = "./proxy/target/debug/grand-duc-proxy.exe"
+    PROXY_WORK_DIR:               str = "./proxy/target/debug"
+    PROXY_LOG_FILE:               str = "./proxy/target/debug/grand-duc.log"
 
     model_config = SettingsConfigDict(
         env_file=".env",
