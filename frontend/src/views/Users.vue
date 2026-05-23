@@ -201,7 +201,9 @@ async function save() {
   saving.value      = true
   try {
     if (editingUser.value) {
-      const payload = { email: form.value.email, role_id: form.value.role_id, enabled: form.value.enabled, must_change_password: form.value.must_change_password }
+      const payload = { email: form.value.email, enabled: form.value.enabled, must_change_password: form.value.must_change_password }
+      // N'envoyer role_id que s'il a réellement changé (évite l'erreur anti-escalade sur son propre compte)
+      if (form.value.role_id !== editingUser.value.role_id) payload.role_id = form.value.role_id
       if (form.value.password) payload.password = form.value.password
       await usersApi.update(editingUser.value.id, payload)
     } else {
