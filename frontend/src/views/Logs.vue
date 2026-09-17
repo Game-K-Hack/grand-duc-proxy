@@ -19,6 +19,11 @@
         <option :value="true">Bloquées uniquement</option>
         <option :value="false">Autorisées uniquement</option>
       </select>
+
+      <!-- Filtre par poste : suit le poste à travers tous ses changements d'IP -->
+      <button v-if="filterClientUserId" class="btn btn-ghost btn-sm" @click="clearClientFilter">
+        Poste : {{ filterClientName || `#${filterClientUserId}` }} ✕
+      </button>
     </div>
 
     <!-- Table -->
@@ -29,7 +34,7 @@
             <tr>
               <th style="width:140px">Date</th>
               <th style="width:120px">IP Client</th>
-              <th style="width:180px">Utilisateur</th>
+              <th style="width:180px">Poste</th>
               <th style="width:76px">Méthode</th>
               <th>URL</th>
               <th style="width:80px">Statut</th>
@@ -44,8 +49,16 @@
                 <td class="mono" style="font-size:11px;color:var(--text-muted);white-space:nowrap">{{ fmtDate(log.accessed_at) }}</td>
                 <td class="mono" style="font-size:12px">{{ log.client_ip || '—' }}</td>
                 <td style="font-size:12px">
-                  <span v-if="log.client_label" style="color:var(--text)">{{ log.client_label }}</span>
-                  <span v-else style="color:var(--text-muted)">—</span>
+                  <!-- client_resolved : poste figé par le proxy au moment de la
+                       requête. Sinon il n'est que déduit de l'IP actuelle, donc
+                       potentiellement faux si cette IP a changé de main. -->
+                  <span v-if="log.client_label" :style="log.client_resolved
+                    ? 'color:var(--text)'
+                    : 'color:var(--text-muted);font-style:italic'"
+                    :title="log.client_resolved ? '' : 'Poste déduit de l’adresse IP actuelle, et non enregistré au moment de la requête'">
+                    {{ log.client_label }}
+                  </span>
+                  <span v-else style="color:var(--text-muted)">Inconnu</span>
                 </td>
                 <td><span class="badge" style="background:rgba(88,166,255,.12);color:var(--blue)">{{ log.method }}</span></td>
                 <td class="mono" style="font-size:11px;max-width:0">
@@ -104,7 +117,11 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter }      from 'vue-router'
 import { logsApi }                  from '@/api'
+
+const route  = useRoute()
+const router = useRouter()
 
 const logs          = ref([])
 const total         = ref(0)
@@ -114,6 +131,8 @@ const search        = ref('')
 const filterBlocked = ref(null)
 const loading       = ref(false)
 const expanded      = ref(null)
+const filterClientUserId = ref(null)
+const filterClientName   = ref('')
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit)))
 
@@ -156,6 +175,7 @@ async function load() {
   try {
     const params = { skip: page.value * limit, limit, search: search.value }
     if (filterBlocked.value !== null) params.blocked = filterBlocked.value
+    if (filterClientUserId.value) params.client_user_id = filterClientUserId.value
     const { data } = await logsApi.list(params)
     logs.value  = data.items
     total.value = data.total
@@ -164,7 +184,21 @@ async function load() {
   }
 }
 
-onMounted(load)
+function clearClientFilter() {
+  filterClientUserId.value = null
+  filterClientName.value   = ''
+  router.replace({ path: '/logs' })
+  page.value = 0
+  load()
+}
+
+onMounted(async () => {
+  const id = Number(route.query.client_user_id)
+  if (id) filterClientUserId.value = id
+  await load()
+  // Le nom du poste vient des lignes retournées, pas d'un appel dédié.
+  if (id) filterClientName.value = logs.value.find(l => l.client_label)?.client_label || ''
+})
 </script>
 
 <style scoped>

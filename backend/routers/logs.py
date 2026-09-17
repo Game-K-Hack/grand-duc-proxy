@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, or_
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Optional
@@ -13,9 +14,13 @@ router = APIRouter()
 
 
 class LogOut(BaseModel):
-    id:           int
-    client_ip:    Optional[str]
-    client_label: Optional[str]
+    id:              int
+    client_ip:       Optional[str]
+    client_user_id:  Optional[int]
+    # False = poste seulement déduit de l'IP courante (log antérieur au suivi
+    # des IP tournantes), et non figé au moment de la requête.
+    client_resolved: bool
+    client_label:    Optional[str]
     host:         Optional[str]
     url:          str
     method:       str
@@ -35,12 +40,23 @@ async def list_logs(
     limit:   int = Query(50, ge=1, le=500),
     search:  str = "",
     blocked: Optional[bool] = None,
+    client_user_id: Optional[int] = None,
     db:      AsyncSession = Depends(get_db),
     _user:   User = Depends(require_permission("logs.read")),
 ):
+    # Deux résolutions du poste : la référence figée par le proxy au moment de
+    # la requête (fiable même après un changement d'IP), et un repli par IP
+    # courante pour les logs écrits avant la mise en place du suivi.
+    cu_direct = aliased(ClientUser)
+    cu_ip     = aliased(ClientUser)
+    label = func.coalesce(
+        cu_direct.label, cu_direct.hostname, cu_ip.label, cu_ip.hostname
+    ).label("client_label")
+
     q = (
-        select(AccessLog, ClientUser.label.label("client_label"))
-        .outerjoin(ClientUser, AccessLog.client_ip == ClientUser.ip_address)
+        select(AccessLog, label)
+        .outerjoin(cu_direct, AccessLog.client_user_id == cu_direct.id)
+        .outerjoin(cu_ip, AccessLog.client_ip == cu_ip.ip_address)
     )
 
     if search:
@@ -48,10 +64,14 @@ async def list_logs(
             AccessLog.host.ilike(f"%{search}%"),
             AccessLog.url.ilike(f"%{search}%"),
             AccessLog.client_ip.ilike(f"%{search}%"),
-            ClientUser.label.ilike(f"%{search}%"),
+            cu_direct.label.ilike(f"%{search}%"),
+            cu_ip.label.ilike(f"%{search}%"),
         ))
     if blocked is not None:
         q = q.where(AccessLog.blocked == blocked)
+    if client_user_id is not None:
+        # « Tous les accès de ce poste », toutes ses IP successives confondues.
+        q = q.where(AccessLog.client_user_id == client_user_id)
 
     q = q.order_by(AccessLog.accessed_at.desc())
 
@@ -66,6 +86,8 @@ async def list_logs(
             LogOut(
                 id=row.AccessLog.id,
                 client_ip=row.AccessLog.client_ip,
+                client_user_id=row.AccessLog.client_user_id,
+                client_resolved=row.AccessLog.client_user_id is not None,
                 client_label=row.client_label,
                 host=row.AccessLog.host,
                 url=row.AccessLog.url,

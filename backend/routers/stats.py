@@ -1,6 +1,6 @@
 import time
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, text, Text
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Literal
@@ -37,6 +37,7 @@ class TopDomain(BaseModel):
 
 class TopClient(BaseModel):
     ip:      str
+    user_id: int | None = None
     label:   str | None
     total:   int
     blocked: int
@@ -158,7 +159,9 @@ async def get_stats(
                 func.date(AccessLog.accessed_at) == func.current_date(),
                 AccessLog.blocked == True,
             ).label("today_blocked"),
-            func.count(func.distinct(AccessLog.client_ip)).filter(
+            func.count(func.distinct(func.coalesce(
+                func.cast(AccessLog.client_user_id, Text), AccessLog.client_ip
+            ))).filter(
                 func.date(AccessLog.accessed_at) == func.current_date()
             ).label("today_clients"),
             func.count().filter(
@@ -208,17 +211,24 @@ async def get_stats(
         .limit(10)
     )).all()
 
-    # Top 10 clients actifs (aujourd'hui) avec label
+    # Top 10 postes actifs (aujourd'hui). Regroupés sur le poste quand il est
+    # connu, pour qu'un changement d'IP dans la journée ne le dédouble pas ;
+    # repli sur l'IP brute pour le trafic non rattaché.
+    client_key = func.coalesce(
+        func.cast(AccessLog.client_user_id, Text), AccessLog.client_ip
+    )
     top_clients_rows = (await db.execute(
         select(
-            AccessLog.client_ip,
+            client_key.label("client_key"),
+            func.max(func.coalesce(ClientUser.ip_address, AccessLog.client_ip)).label("ip"),
+            AccessLog.client_user_id,
             func.count().label("total"),
             func.count().filter(AccessLog.blocked == True).label("blocked"),
-            ClientUser.label,
+            func.max(func.coalesce(ClientUser.label, ClientUser.hostname)).label("label"),
         )
-        .outerjoin(ClientUser, AccessLog.client_ip == ClientUser.ip_address)
+        .outerjoin(ClientUser, AccessLog.client_user_id == ClientUser.id)
         .where(func.date(AccessLog.accessed_at) == func.current_date())
-        .group_by(AccessLog.client_ip, ClientUser.label)
+        .group_by(client_key, AccessLog.client_user_id)
         .order_by(func.count().desc())
         .limit(10)
     )).all()
@@ -240,7 +250,7 @@ async def get_stats(
         killswitch=killswitch_active,
         top_blocked=[TopDomain(host=r.host, count=r.count, blocked=r.count) for r in top_blocked_rows],
         top_domains=[TopDomain(host=r.host, count=r.count, blocked=r.blocked or 0) for r in top_domains_rows],
-        top_clients=[TopClient(ip=r.client_ip or "?", label=r.label, total=r.total, blocked=r.blocked or 0) for r in top_clients_rows],
+        top_clients=[TopClient(ip=r.ip or "?", user_id=r.client_user_id, label=r.label, total=r.total, blocked=r.blocked or 0) for r in top_clients_rows],
     )
     _set_cached("stats", result)
     return result

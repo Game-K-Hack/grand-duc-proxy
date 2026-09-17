@@ -23,11 +23,18 @@ class AccessLog(Base):
         Index("ix_access_logs_accessed_at", "accessed_at"),
         Index("ix_access_logs_blocked_accessed_at", "blocked", "accessed_at"),
         Index("ix_access_logs_client_ip", "client_ip"),
+        Index("ix_access_logs_client_user_id", "client_user_id", "accessed_at"),
         Index("ix_access_logs_host", "host"),
     )
 
     id:          Mapped[int]           = mapped_column(BigInteger, primary_key=True)
     client_ip:   Mapped[str | None]    = mapped_column(Text)
+    # Poste figé au moment de la requête, écrit par le proxy. Contrairement à
+    # client_ip, il survit à un changement d'IP : c'est lui qui dit à quel poste
+    # appartenait l'IP à ce moment-là.
+    client_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("client_users.id", ondelete="SET NULL")
+    )
     host:        Mapped[str]           = mapped_column(Text, nullable=False)
     url:         Mapped[str]           = mapped_column(Text, nullable=False)
     method:      Mapped[str]           = mapped_column(String(10), default="CONNECT")
@@ -95,7 +102,9 @@ class RmmIntegration(Base):
 class ClientUser(Base):
     __tablename__ = "client_users"
     id:                  Mapped[int]         = mapped_column(BigInteger, primary_key=True)
-    ip_address:          Mapped[str]         = mapped_column(Text, unique=True, nullable=False)
+    # Nullable : un poste peut être privé d'IP le temps qu'elle soit transférée
+    # à un autre poste, sans perdre ses groupes ni son historique.
+    ip_address:          Mapped[str | None]  = mapped_column(Text, unique=True)
     label:               Mapped[str | None]  = mapped_column(Text)
     hostname:            Mapped[str | None]  = mapped_column(Text)
     os:                  Mapped[str | None]  = mapped_column(Text)
@@ -105,6 +114,28 @@ class ClientUser(Base):
     last_seen_rmm:       Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rmm_integration_id:  Mapped[int | None]  = mapped_column(BigInteger, ForeignKey("rmm_integrations.id", ondelete="SET NULL"))
     created_at:          Mapped[datetime]    = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ClientUserIp(Base):
+    """Périodes de détention d'une adresse IP par un poste.
+
+    `released_at IS NULL` = période en cours. Deux index uniques partiels en
+    base garantissent qu'une IP n'a qu'un détenteur actif et qu'un poste n'a
+    qu'une période courante (cf. SQL/migration_v16.sql).
+    """
+    __tablename__ = "client_user_ips"
+    __table_args__ = (
+        Index("ix_client_user_ips_ip_time",   "ip_address", "assigned_at"),
+        Index("ix_client_user_ips_user_time", "user_id",    "assigned_at"),
+    )
+
+    id:          Mapped[int]      = mapped_column(BigInteger, primary_key=True)
+    user_id:     Mapped[int]      = mapped_column(BigInteger, ForeignKey("client_users.id", ondelete="CASCADE"), nullable=False)
+    ip_address:  Mapped[str]      = mapped_column(Text, nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source:      Mapped[str]      = mapped_column(Text, default="manual")
+    note:        Mapped[str | None] = mapped_column(Text)
 
 
 class ClientUserGroups(Base):

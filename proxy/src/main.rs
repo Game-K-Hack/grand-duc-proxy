@@ -171,6 +171,17 @@ impl AppState {
         let sep = if database_url.contains('?') { '&' } else { '?' };
         let url_utf8 = format!("{}{}options=-c%20client_encoding%3DUTF8", database_url, sep);
         let db_pool = PgPool::connect(&url_utf8).await?;
+
+        // Sans les macros sqlx, rien ne vérifie le schéma à la compilation :
+        // si la migration v16 manque, chaque INSERT de log échouerait en
+        // silence (fire-and-forget). Mieux vaut refuser de démarrer.
+        sqlx::query("SELECT client_user_id FROM access_logs LIMIT 0")
+            .execute(&db_pool)
+            .await
+            .map_err(|e| anyhow!(
+                "Schéma de base incompatible — la migration v16 n'est pas appliquée ({})", e
+            ))?;
+
         let state = Self {
             db_pool,
             rules_cache:  Arc::new(RwLock::new(Vec::new())),
@@ -222,8 +233,12 @@ impl AppState {
 
     pub async fn refresh_client_cache(&self) -> Result<()> {
         // 1. Utilisateurs clients (IP → user_id)
+        // Le WHERE n'est pas une optimisation : `ClientUserRow.ip_address` est un
+        // String non-Option, une seule ligne à IP NULL (poste en cours de
+        // transfert d'IP) ferait échouer le décodage — et donc TOUT le
+        // rafraîchissement, laissant le proxy sur un cache figé.
         let users = sqlx::query_as::<_, ClientUserRow>(
-            "SELECT id, ip_address FROM client_users"
+            "SELECT id, ip_address FROM client_users WHERE ip_address IS NOT NULL"
         )
         .fetch_all(&self.db_pool)
         .await?;
@@ -286,7 +301,7 @@ impl AppState {
         let ip_count     = cache.ip_to_user_id.len();
         let bypass_count = cache.tls_bypass.len();
         *self.client_cache.write().await = cache;
-        info!("Cache clients rafraîchi — {} IP enregistrées, {} hôtes bypass", ip_count, bypass_count);
+        debug!("Cache clients rafraîchi — {} IP enregistrées, {} hôtes bypass", ip_count, bypass_count);
         Ok(())
     }
 
@@ -462,8 +477,11 @@ impl AppState {
         tokio::spawn(async move {
             let result = sqlx::query(
                 r#"
-                INSERT INTO access_logs (client_ip, url, method, blocked, user_agent, accessed_at)
-                VALUES ($1, $2, $3, $4, $5, NOW())
+                INSERT INTO access_logs
+                    (client_ip, client_user_id, url, method, blocked, user_agent, accessed_at)
+                VALUES
+                    ($1, (SELECT id FROM client_users WHERE ip_address = $1),
+                     $2, $3, $4, $5, NOW())
                 "#,
             )
             .bind(&client_ip)
@@ -938,11 +956,26 @@ async fn main() -> Result<()> {
                 if let Err(e) = state_bg.refresh_rules_cache().await {
                     error!("Rafraîchissement du cache échoué: {}", e);
                 }
-                if let Err(e) = state_bg.refresh_client_cache().await {
-                    error!("Rafraîchissement clients échoué: {}", e);
-                }
                 if let Err(e) = state_bg.refresh_block_page().await {
                     error!("Rafraîchissement page de blocage échoué: {}", e);
+                }
+            }
+        });
+    }
+
+    // ── Cache clients : rafraîchi plus souvent (toutes les 30s) ───────────
+    // Les IP des postes tournent (DHCP) ; entre le changement d'IP et ce
+    // rafraîchissement, le poste retombe sur le groupe par défaut. On réduit
+    // donc cette fenêtre, sans pour autant recharger règles et page de blocage.
+    {
+        let state_bg = state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                if let Err(e) = state_bg.refresh_client_cache().await {
+                    error!("Rafraîchissement clients échoué: {}", e);
                 }
             }
         });

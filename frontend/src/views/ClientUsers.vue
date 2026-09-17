@@ -42,14 +42,15 @@
             <div style="display:flex;align-items:center;justify-content:space-between">
               <div style="min-width:0">
                 <div style="display:flex;align-items:center;gap:6px">
-                  <div style="font-size:13px;font-weight:500">{{ u.label || u.ip_address }}</div>
+                  <div style="font-size:13px;font-weight:500">{{ displayName(u) }}</div>
                   <span v-if="u.source === 'rmm'"
                     style="font-size:9px;padding:1px 5px;border-radius:8px;background:rgba(88,166,255,.15);color:#58a6ff;font-weight:600;flex-shrink:0">
                     RMM
                   </span>
                 </div>
                 <div style="font-size:11px;color:var(--text-muted);font-family:monospace;margin-top:1px">
-                  {{ u.label ? u.ip_address : '' }}
+                  <span v-if="!u.ip_address" style="font-style:italic">aucune IP</span>
+                  <span v-else-if="u.label">{{ u.ip_address }}</span>
                 </div>
                 <div v-if="u.hostname && u.hostname !== u.label" style="font-size:10px;color:var(--text-muted);margin-top:1px">
                   {{ u.hostname }}
@@ -94,14 +95,15 @@
           <div style="display:flex;align-items:flex-start;gap:16px">
             <div style="flex:1">
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                <div style="font-size:16px;font-weight:700">{{ selected.label || selected.ip_address }}</div>
+                <div style="font-size:16px;font-weight:700">{{ displayName(selected) }}</div>
                 <span v-if="selected.source === 'rmm'"
                   style="font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(88,166,255,.15);color:#58a6ff;font-weight:600">
                   RMM
                 </span>
               </div>
               <div style="font-family:monospace;font-size:13px;color:var(--text-muted);margin-top:2px">
-                {{ selected.label ? selected.ip_address : '' }}
+                <span v-if="!selected.ip_address" style="font-style:italic">aucune IP attribuée</span>
+                <span v-else-if="selected.label">{{ selected.ip_address }}</span>
               </div>
               <div v-if="selected.hostname || selected.os || selected.logged_user" style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap">
                 <div v-if="selected.logged_user" style="font-size:12px;color:var(--text-muted)">
@@ -122,9 +124,14 @@
                 </div>
               </div>
             </div>
-            <button v-if="auth.hasPermission('client_users.write')" class="btn btn-ghost btn-sm" @click="openEdit(selected)">
-              Modifier
-            </button>
+            <div style="display:flex;gap:8px;flex-shrink:0">
+              <button class="btn btn-ghost btn-sm" @click="openLogs(selected)">
+                Voir les logs
+              </button>
+              <button v-if="auth.hasPermission('client_users.write')" class="btn btn-ghost btn-sm" @click="openEdit(selected)">
+                Modifier
+              </button>
+            </div>
           </div>
         </div>
 
@@ -189,6 +196,48 @@
             </div>
           </div>
         </div>
+
+        <!-- Historique des adresses IP -->
+        <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
+          <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
+            <div style="font-weight:600;font-size:13px;margin-bottom:2px">Historique des adresses IP</div>
+            <div style="font-size:12px;color:var(--text-muted)">
+              Permet de savoir à quel poste appartenait une IP à une date donnée.
+            </div>
+          </div>
+          <div v-if="historyLoading" style="padding:20px;text-align:center;font-size:13px;color:var(--text-muted)">
+            Chargement…
+          </div>
+          <div v-else-if="!ipHistory.length" style="padding:20px;text-align:center;font-size:13px;color:var(--text-muted)">
+            Aucune adresse enregistrée
+          </div>
+          <table v-else class="table">
+            <thead>
+              <tr>
+                <th style="width:150px">Adresse IP</th>
+                <th style="width:150px">Du</th>
+                <th style="width:150px">Au</th>
+                <th>Origine</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(h, i) in ipHistory" :key="i">
+                <td style="font-family:monospace">
+                  {{ h.ip_address }}
+                  <span v-if="h.is_current"
+                    style="font-size:9px;padding:1px 5px;border-radius:8px;background:rgba(63,185,80,.15);color:#3fb950;font-weight:600;margin-left:6px">
+                    ACTUELLE
+                  </span>
+                </td>
+                <td style="color:var(--text-muted)">{{ fmtDate(h.assigned_at) }}</td>
+                <td style="color:var(--text-muted)">{{ h.released_at ? fmtDate(h.released_at) : '—' }}</td>
+                <td style="color:var(--text-muted);font-size:12px">
+                  {{ sourceLabel(h.source) }}<template v-if="h.note"> — {{ h.note }}</template>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div v-else class="card" style="display:flex;align-items:center;justify-content:center;min-height:180px;color:var(--text-muted);font-size:13px">
@@ -202,9 +251,13 @@
         <div class="modal-title">{{ editing ? 'Modifier l\'utilisateur' : 'Ajouter une IP' }}</div>
         <div v-if="formError" class="alert alert-error">{{ formError }}</div>
 
-        <div v-if="!editing" class="form-group" style="margin-bottom:14px">
-          <label class="form-label">Adresse IP *</label>
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Adresse IP {{ editing ? '' : '*' }}</label>
           <input v-model="form.ip_address" class="form-input" placeholder="192.168.1.42" @keyup.enter="save" />
+          <div v-if="editing" style="font-size:11px;color:var(--text-muted);margin-top:4px">
+            Le poste conserve ses groupes et ses droits. L'ancienne adresse reste
+            consultable dans son historique. Laisser vide pour libérer l'IP.
+          </div>
         </div>
 
         <div class="form-group" style="margin-bottom:14px">
@@ -231,13 +284,39 @@
       </div>
     </div>
 
+    <!-- ── Modal conflit d'IP ─────────────────────────────────────────── -->
+    <div class="modal-overlay" v-if="ipConflict" @click.self="ipConflict = null">
+      <div class="modal" style="width:420px">
+        <div class="modal-title">Adresse déjà attribuée</div>
+        <p style="color:var(--text-muted);margin-bottom:16px">
+          L'adresse <strong style="font-family:monospace;color:var(--text)">{{ ipConflict.ip }}</strong>
+          est actuellement attribuée au poste
+          <strong style="color:var(--text)">{{ ipConflict.holderName }}</strong>.
+        </p>
+        <p style="color:var(--text-muted);margin-bottom:16px;font-size:12px">
+          En la transférant, {{ ipConflict.holderName }} se retrouvera sans adresse IP
+          mais conservera ses groupes, ses droits et son historique.
+        </p>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" @click="ipConflict = null">Annuler</button>
+          <button class="btn btn-primary" @click="forceIpChange" :disabled="saving">
+            {{ saving ? 'Transfert…' : 'Transférer l’adresse' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Modal confirmation suppression ────────────────────────────── -->
     <div class="modal-overlay" v-if="deleteTarget" @click.self="deleteTarget = null">
       <div class="modal" style="width:360px">
         <div class="modal-title">Supprimer cet utilisateur ?</div>
         <p style="color:var(--text-muted);margin-bottom:16px">
-          L'IP <strong style="font-family:monospace;color:var(--text)">{{ deleteTarget.ip_address }}</strong>
-          {{ deleteTarget.label ? `(${deleteTarget.label})` : '' }} sera supprimée ainsi que ses associations de groupes.
+          Le poste <strong style="color:var(--text)">{{ displayName(deleteTarget) }}</strong>
+          sera supprimé ainsi que ses associations de groupes.
+        </p>
+        <p style="color:var(--text-muted);margin-bottom:16px;font-size:12px">
+          Son historique d'adresses IP sera perdu et ses logs ne seront plus rattachés
+          à aucun poste : vous ne pourrez plus savoir à qui appartenaient ces accès.
         </p>
         <div class="modal-footer">
           <button class="btn btn-ghost" @click="deleteTarget = null">Annuler</button>
@@ -309,10 +388,12 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter }                 from 'vue-router'
 import { clientUsersApi, groupsApi } from '@/api'
 import { useAuthStore }              from '@/stores/auth'
 
-const auth = useAuthStore()
+const auth   = useAuthStore()
+const router = useRouter()
 
 const users       = ref([])
 const allGroups   = ref([])
@@ -324,6 +405,9 @@ const formError        = ref('')
 const showModal        = ref(false)
 const editing          = ref(null)
 const deleteTarget     = ref(null)
+const ipHistory        = ref([])
+const historyLoading   = ref(false)
+const ipConflict       = ref(null)
 const form             = ref({ ip_address: '', label: '', hostname: '', os: '' })
 const showDiscover     = ref(false)
 const discoverLoading  = ref(false)
@@ -371,7 +455,7 @@ const filteredUsers = computed(() => {
   const q = search.value.toLowerCase()
   if (!q) return users.value
   return users.value.filter(u =>
-    u.ip_address.includes(q) ||
+    (u.ip_address  || '').includes(q) ||
     (u.label       || '').toLowerCase().includes(q) ||
     (u.hostname    || '').toLowerCase().includes(q) ||
     (u.os          || '').toLowerCase().includes(q) ||
@@ -408,6 +492,26 @@ async function registerIp(ip) {
   }
 }
 
+// Un poste peut n'avoir ni label ni IP (le temps d'un transfert d'adresse).
+function displayName(u) {
+  if (!u) return ''
+  return u.label || u.hostname || u.ip_address || `Poste #${u.id}`
+}
+
+const SOURCE_LABELS = {
+  manual:    'Saisie manuelle',
+  rmm:       'Synchro RMM',
+  discover:  'Découverte',
+  migration: 'Reprise initiale',
+}
+function sourceLabel(src) {
+  return SOURCE_LABELS[src] || src
+}
+
+function openLogs(u) {
+  router.push({ path: '/logs', query: { client_user_id: u.id } })
+}
+
 function fmtDate(iso) {
   if (!iso) return ''
   return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
@@ -424,6 +528,20 @@ async function loadUsers() {
 
 async function selectUser(u) {
   selected.value = u
+  await loadHistory(u.id)
+}
+
+async function loadHistory(userId) {
+  historyLoading.value = true
+  ipHistory.value = []
+  try {
+    const { data } = await clientUsersApi.ipHistory(userId)
+    ipHistory.value = data
+  } catch {
+    ipHistory.value = []
+  } finally {
+    historyLoading.value = false
+  }
 }
 
 async function toggleGroup(gid, checked) {
@@ -481,9 +599,14 @@ async function save() {
         hostname: form.value.hostname || null,
         os:       form.value.os       || null,
       })
-      const idx = users.value.findIndex(u => u.id === editing.value.id)
-      if (idx !== -1) users.value[idx] = data
-      if (selected.value?.id === editing.value.id) selected.value = data
+      applyUpdatedUser(data)
+      // L'IP passe par son propre endpoint : elle clôt une période
+      // d'historique et peut entrer en conflit avec un autre poste.
+      const wanted = form.value.ip_address.trim() || null
+      if (wanted !== (editing.value.ip_address || null)) {
+        await applyIpChange(editing.value.id, wanted, false)
+        return
+      }
     } else {
       await clientUsersApi.create({
         ip_address: form.value.ip_address,
@@ -495,10 +618,61 @@ async function save() {
     }
     showModal.value = false
   } catch (e) {
-    formError.value = e.response?.data?.detail || 'Erreur serveur'
+    formError.value = errorMessage(e)
   } finally {
     saving.value = false
   }
+}
+
+// Le détail d'un 409 de conflit est un objet ; les autres erreurs FastAPI
+// renvoient une simple chaîne.
+function errorMessage(e) {
+  const d = e.response?.data?.detail
+  if (typeof d === 'string') return d
+  if (d?.message) return d.message
+  if (Array.isArray(d) && d[0]?.msg) return d[0].msg
+  return 'Erreur serveur'
+}
+
+function applyUpdatedUser(data) {
+  const idx = users.value.findIndex(u => u.id === data.id)
+  if (idx !== -1) users.value[idx] = data
+  if (selected.value?.id === data.id) selected.value = data
+}
+
+async function applyIpChange(userId, ip, force) {
+  saving.value = true
+  try {
+    const { data } = await clientUsersApi.changeIp(userId, { ip_address: ip, force })
+    applyUpdatedUser(data)
+    ipConflict.value = null
+    showModal.value  = false
+    // Un transfert dépossède un autre poste : la liste entière peut bouger.
+    await loadUsers()
+    if (selected.value?.id === userId) await loadHistory(userId)
+  } catch (e) {
+    const detail = e.response?.data?.detail
+    if (e.response?.status === 409 && detail?.conflict) {
+      const h = detail.conflict
+      ipConflict.value = {
+        userId,
+        ip,
+        holderName: h.label || h.hostname || `Poste #${h.id}`,
+      }
+      showModal.value = false
+      formError.value = ''
+    } else {
+      showModal.value = true
+      formError.value = errorMessage(e)
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+async function forceIpChange() {
+  const { userId, ip } = ipConflict.value
+  await applyIpChange(userId, ip, true)
 }
 
 function confirmDelete(u) { deleteTarget.value = u }

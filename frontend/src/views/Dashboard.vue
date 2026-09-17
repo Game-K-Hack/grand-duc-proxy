@@ -249,7 +249,7 @@
             <table>
               <thead><tr><th>Poste</th><th style="text-align:right">Requêtes</th><th style="text-align:right">Bloquées</th></tr></thead>
               <tbody>
-                <tr v-for="c in stats.top_clients" :key="c.ip">
+                <tr v-for="c in stats.top_clients" :key="c.user_id ?? c.ip">
                   <td>
                     <div style="font-size:12px;font-weight:500">{{ c.label || c.ip }}</div>
                     <div v-if="c.label" class="mono" style="font-size:10px;color:var(--text-muted)">{{ c.ip }}</div>

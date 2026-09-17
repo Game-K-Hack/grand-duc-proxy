@@ -76,7 +76,10 @@ export const rulesApi = {
 }
 
 export const logsApi = {
-  list: (params) => dedup(`logs:${params?.skip}`, () => api.get('/logs', { params })),
+  list: (params) => dedup(
+    `logs:${params?.skip}:${params?.client_user_id ?? ''}`,
+    () => api.get('/logs', { params }),
+  ),
 }
 
 export const statsApi = {
@@ -186,6 +189,10 @@ export const clientUsersApi = {
   create:     (body)         => api.post('/client-users', body),
   update:     (id, body)     => api.put(`/client-users/${id}`, body),
   delete:     (id)           => api.delete(`/client-users/${id}`),
+  // Changement d'IP : le poste garde son id, donc ses groupes et ses droits.
+  // ip_address null libère l'IP ; force transfère une IP déjà attribuée.
+  changeIp:   (id, body)     => api.put(`/client-users/${id}/ip`, body),
+  ipHistory:  (id)           => api.get(`/client-users/${id}/ips`),
   // Gestion des groupes de l'utilisateur
   getGroups:  (id)           => api.get(`/client-users/${id}/groups`),
   setGroups:  (id, groupIds) => api.put(`/client-users/${id}/groups`, { group_ids: groupIds }),

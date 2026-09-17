@@ -11,6 +11,9 @@ from database import get_db
 from models   import ClientUser, ClientGroup, ClientUserGroups, GroupRule, FilterRule, AccessLog
 from security import require_permission
 from models   import User
+from services.client_ips import (
+    IpConflict, IpTaken, change_client_user_ip, ip_history, normalize_ip,
+)
 
 router = APIRouter()
 
@@ -26,11 +29,12 @@ class ClientUserIn(BaseModel):
     @field_validator("ip_address")
     @classmethod
     def validate_ip(cls, v: str) -> str:
+        # Normalisée et pas seulement validée : le proxy enregistre la forme
+        # canonique, une saisie « 192.168.001.010 » ne matcherait jamais.
         try:
-            ipaddress.ip_address(v.strip())
+            return normalize_ip(v)
         except ValueError:
             raise ValueError(f"Adresse IP invalide : {v}")
-        return v.strip()
 
 
 class ClientUserUpdate(BaseModel):
@@ -44,9 +48,38 @@ class GroupBrief(BaseModel):
     name: str
 
 
+class ChangeIpIn(BaseModel):
+    """`ip_address: null` libère le poste de son IP.
+
+    Endpoint dédié plutôt qu'un champ du PUT générique : Pydantic ne permet pas
+    d'y distinguer un `null` explicite (= libérer) d'un champ absent.
+    """
+    ip_address: Optional[str] = None
+    force:      bool = False   # transférer l'IP si elle est détenue par un autre poste
+
+    @field_validator("ip_address")
+    @classmethod
+    def validate_ip(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None
+        try:
+            return normalize_ip(v)
+        except ValueError:
+            raise ValueError(f"Adresse IP invalide : {v}")
+
+
+class IpHistoryOut(BaseModel):
+    ip_address:  str
+    assigned_at: str
+    released_at: Optional[str]
+    source:      str
+    note:        Optional[str]
+    is_current:  bool
+
+
 class ClientUserOut(BaseModel):
     id:                 int
-    ip_address:         str
+    ip_address:         Optional[str]
     label:              Optional[str]
     hostname:           Optional[str]
     os:                 Optional[str]
@@ -142,8 +175,11 @@ async def create_client_user(
 ):
     if (await db.execute(select(ClientUser).where(ClientUser.ip_address == body.ip_address))).scalar_one_or_none():
         raise HTTPException(409, "Cette adresse IP est déjà enregistrée")
-    u = ClientUser(ip_address=body.ip_address, label=body.label, hostname=body.hostname, os=body.os)
+    u = ClientUser(label=body.label, hostname=body.hostname, os=body.os)
     db.add(u)
+    await db.flush()
+    # L'IP passe par le service pour ouvrir la période d'historique du poste.
+    await change_client_user_ip(db, u, body.ip_address, source="manual")
     await db.commit()
     await db.refresh(u)
     return await build_user_out(db, u)
@@ -160,8 +196,15 @@ async def list_unknown_ips(
     db:    AsyncSession = Depends(get_db),
     _user: User = Depends(require_permission("client_users.read")),
 ):
-    """IPs privées vues dans access_logs mais absentes de client_users."""
-    known_ips = select(ClientUser.ip_address)
+    """IPs privées vues dans access_logs mais rattachées à aucun poste.
+
+    Le filtre `client_user_id IS NULL` rend le comportement correct sans aucune
+    clause temporelle : si une IP est libérée puis réémet du trafic, ses logs
+    antérieurs portent le poste d'origine (donc exclus) tandis que les nouveaux
+    sont écrits sans poste — l'IP réapparaît ici, avec un compteur ne reflétant
+    que le trafic postérieur à la libération.
+    """
+    known_ips = select(ClientUser.ip_address).where(ClientUser.ip_address.isnot(None))
     rows = (await db.execute(
         select(
             AccessLog.client_ip,
@@ -169,6 +212,7 @@ async def list_unknown_ips(
             func.max(AccessLog.accessed_at).label("last_seen"),
         )
         .where(AccessLog.client_ip.isnot(None))
+        .where(AccessLog.client_user_id.is_(None))
         .where(AccessLog.client_ip.notin_(known_ips))
         .group_by(AccessLog.client_ip)
         .order_by(func.count().desc())
@@ -204,6 +248,61 @@ async def update_client_user(
     await db.commit()
     await db.refresh(u)
     return await build_user_out(db, u)
+
+
+@router.put("/{user_id}/ip", response_model=ClientUserOut)
+async def change_ip(
+    user_id: int, body: ChangeIpIn,
+    db:    AsyncSession = Depends(get_db),
+    _user: User = Depends(require_permission("client_users.write")),
+):
+    """Change (ou libère) l'IP d'un poste.
+
+    Le poste conserve son id, donc ses groupes, donc ses droits et restrictions.
+    L'ancienne IP disparaît de la liste des postes mais reste consultable dans
+    l'historique, et les logs déjà enregistrés gardent le poste auquel ils
+    appartenaient au moment de la requête.
+    """
+    u = await get_user_or_404(db, user_id)
+    try:
+        await change_client_user_ip(db, u, body.ip_address, source="manual", force=body.force)
+    except IpConflict as exc:
+        raise HTTPException(409, detail={
+            "message":  f"L'adresse {exc.ip} est déjà attribuée à un autre poste.",
+            "conflict": {
+                "id":       exc.holder.id,
+                "label":    exc.holder.label,
+                "hostname": exc.holder.hostname,
+            },
+        })
+    except IpTaken as exc:
+        raise HTTPException(409, str(exc))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    await db.commit()
+    await db.refresh(u)
+    return await build_user_out(db, u)
+
+
+@router.get("/{user_id}/ips", response_model=list[IpHistoryOut])
+async def get_ip_history(
+    user_id: int,
+    db:    AsyncSession = Depends(get_db),
+    _user: User = Depends(require_permission("client_users.read")),
+):
+    """Historique des adresses IP détenues par le poste, la plus récente d'abord."""
+    await get_user_or_404(db, user_id)
+    return [
+        IpHistoryOut(
+            ip_address=h.ip_address,
+            assigned_at=h.assigned_at.isoformat(),
+            released_at=h.released_at.isoformat() if h.released_at else None,
+            source=h.source,
+            note=h.note,
+            is_current=h.released_at is None,
+        )
+        for h in await ip_history(db, user_id)
+    ]
 
 
 @router.delete("/{user_id}", status_code=204)
@@ -266,7 +365,7 @@ class TestAccessOut(BaseModel):
     url:     str
     blocked: bool
     reason:  Optional[RuleMatch]   # None = aucune règle ne correspond (autorisé)
-    user_ip: str
+    user_ip: Optional[str]   # None si le poste n'a pas d'IP attribuée
     user_label: Optional[str]
     groups:  list[str]
 

@@ -17,8 +17,9 @@
             <select v-model="selectedUserId" class="form-select" :class="{ 'input-error': errors.user }" @change="errors.user = false">
               <option value="">— Choisir un utilisateur —</option>
               <option v-for="u in users" :key="u.id" :value="u.id">
-                {{ u.label || u.ip_address }}
-                {{ u.label ? `(${u.ip_address})` : '' }}
+                {{ u.label || u.hostname || u.ip_address || `Poste #${u.id}` }}
+                {{ u.label && u.ip_address ? `(${u.ip_address})` : '' }}
+                {{ u.ip_address ? '' : '(aucune IP)' }}
               </option>
             </select>
           </div>

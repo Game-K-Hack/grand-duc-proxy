@@ -21,6 +21,7 @@ from database import get_db, AsyncSessionLocal
 from models import ClientUser, ClientGroup, ClientUserGroups, RmmIntegration
 from security import require_permission
 from models import User
+from services.client_ips import IpConflict, change_client_user_ip, normalize_ip
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -306,31 +307,46 @@ async def run_sync(integration_id: int) -> dict:
             )).all()
             group_cache = {g.name: g.id for g in existing_groups}
 
+        # ── Index des postes existants ────────────────────────────────────
+        # Le poste est identifié par son agent RMM, pas par son IP : c'est ce
+        # qui lui permet de changer d'IP sans être dupliqué ni perdre ses
+        # groupes. L'index par IP ne sert plus que de repli, pour adopter les
+        # postes déjà en base qui n'ont pas encore d'agent_id.
+        all_users = (await db.execute(select(ClientUser))).scalars().all()
+        by_agent = {u.rmm_agent_id: u for u in all_users if u.rmm_agent_id}
+        by_ip    = {u.ip_address: u for u in all_users if u.ip_address}
+
+        # Passe 1 : métadonnées uniquement. Les IP sont collectées et traitées
+        # en passe 2, car appliquer un changement d'IP au fil de l'eau
+        # violerait l'unicité dès qu'un poste reprend l'IP d'un autre.
+        wanted_ips: list[tuple[int, str | None]] = []
+
         for agent in agents:
-            existing = (await db.execute(
-                select(ClientUser).where(ClientUser.ip_address == agent.ip)
-            )).scalar_one_or_none()
+            existing = by_agent.get(agent.agent_id)
+            if existing is None and agent.ip:
+                existing = by_ip.get(agent.ip)
 
             user_id: int | None = None
 
             if existing:
                 user_id = existing.id
+                # Adoption : on inscrit l'agent_id même sur un poste manuel,
+                # pour que le repli par IP ne serve qu'une fois.
+                existing.rmm_agent_id = agent.agent_id
+                existing.rmm_integration_id = integration_id
+                existing.last_seen_rmm = now
+                by_agent[agent.agent_id] = existing
                 if existing.source == "manual":
-                    existing.last_seen_rmm = now
                     skipped += 1
                 else:
                     existing.hostname = agent.hostname
                     existing.os = agent.os
                     existing.logged_user = agent.logged_user or existing.logged_user
-                    existing.rmm_agent_id = agent.agent_id
-                    existing.last_seen_rmm = now
-                    existing.rmm_integration_id = integration_id
                     if not existing.label:
                         existing.label = agent.hostname
                     updated += 1
             else:
                 new_user = ClientUser(
-                    ip_address=agent.ip,
                     label=agent.hostname,
                     hostname=agent.hostname,
                     os=agent.os,
@@ -343,7 +359,11 @@ async def run_sync(integration_id: int) -> dict:
                 db.add(new_user)
                 await db.flush()  # pour obtenir new_user.id
                 user_id = new_user.id
+                by_agent[agent.agent_id] = new_user
                 created += 1
+
+            if user_id and agent.ip:
+                wanted_ips.append((user_id, agent.ip))
 
             # ── Auto-assignation au groupe ────────────────────────────────
             if auto_group != "none" and user_id:
@@ -368,7 +388,65 @@ async def run_sync(integration_id: int) -> dict:
                     if not link:
                         db.add(ClientUserGroups(user_id=user_id, group_id=gid))
 
+        # ── Passe 2 : application des changements d'IP ────────────────────
+        # On libère d'abord toutes les IP sortantes, puis on attribue les
+        # entrantes : sans ça, deux postes qui échangent leur IP dans la même
+        # synchro se heurteraient à la contrainte d'unicité.
+        ip_changed = ip_conflicts = 0
+        await db.flush()
+
+        # a. Ne retenir que les postes dont l'IP change réellement.
+        targets: list[tuple[ClientUser, str]] = []
+        for user_id, raw_ip in wanted_ips:
+            u = await db.get(ClientUser, user_id)
+            if u is None:
+                continue
+            try:
+                ip = normalize_ip(raw_ip)
+            except ValueError:
+                logger.warning("RMM : IP invalide ignorée pour le poste #%s : %r", user_id, raw_ip)
+                continue
+            if u.ip_address != ip:
+                targets.append((u, ip))
+
+        # b. Écarter les IP détenues par un poste manuel absent de cette synchro :
+        #    l'admin les a saisies à la main, le RMM ne les écrase pas. Filtré
+        #    AVANT toute libération, pour ne pas laisser un poste écarté sans IP.
+        moving = {u.id for u, _ in targets}
+        kept: list[tuple[ClientUser, str]] = []
+        for u, ip in targets:
+            holder = (await db.execute(
+                select(ClientUser).where(ClientUser.ip_address == ip, ClientUser.id != u.id)
+            )).scalar_one_or_none()
+            if holder is not None and holder.source == "manual" and holder.id not in moving:
+                logger.warning(
+                    "RMM : IP %s conservée au poste manuel #%s, poste #%s laissé en place",
+                    ip, holder.id, u.id,
+                )
+                ip_conflicts += 1
+                continue
+            kept.append((u, ip))
+
+        # c. Libérer toutes les IP sortantes avant d'attribuer les entrantes.
+        for u, _ip in kept:
+            await change_client_user_ip(db, u, None, source="rmm", note="libérée par la synchro RMM")
+
+        # d. Attribuer. Le force=True ne peut plus déposséder qu'un poste RMM,
+        #    ou un poste manuel qui déménage lui aussi dans cette synchro.
+        for u, ip in kept:
+            try:
+                res = await change_client_user_ip(db, u, ip, source="rmm", force=True)
+            except IpConflict:
+                ip_conflicts += 1
+                continue
+            if res.changed:
+                ip_changed += 1
+
         parts = [f"{created} créés", f"{updated} mis à jour", f"{skipped} ignorés"]
+        if ip_changed:
+            parts.append(f"{ip_changed} IP changées")
+        if ip_conflicts:
+            parts.append(f"{ip_conflicts} conflits d'IP")
         if groups_created:
             parts.append(f"{groups_created} groupes créés")
         status_msg = f"OK — {', '.join(parts)}"
@@ -378,7 +456,11 @@ async def run_sync(integration_id: int) -> dict:
             .values(last_sync_at=now, last_sync_status=status_msg)
         )
         await db.commit()
-        return {"created": created, "updated": updated, "skipped": skipped, "groups_created": groups_created}
+        return {
+            "created": created, "updated": updated, "skipped": skipped,
+            "groups_created": groups_created,
+            "ip_changed": ip_changed, "ip_conflicts": ip_conflicts,
+        }
 
 
 # ── Boucle de synchronisation automatique ─────────────────────────────────────
