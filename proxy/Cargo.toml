@@ -1,6 +1,6 @@
 [package]
 name        = "grand-duc-proxy"
-version     = "0.1.0"
+version     = "0.1.6"
 edition     = "2021"
 description = "Proxy HTTP/HTTPS d'entreprise avec filtrage dynamique par règles Regex"
 

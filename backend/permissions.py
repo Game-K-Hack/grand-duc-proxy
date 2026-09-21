@@ -32,6 +32,8 @@ ALL_PERMISSIONS: list[str] = [
     "roles.read",
     "roles.write",
     "proxy.restart",
+    "updates.read",
+    "updates.apply",
 ]
 
 # ── Jeux de permissions pour les rôles built-in ──────────────────────────────
@@ -64,6 +66,8 @@ PERMISSION_LABELS: dict[str, dict] = {
     "roles.read":            {"section": "Administration",  "feature": "Rôles",                 "action": "Lecture"},
     "roles.write":           {"section": "Administration",  "feature": "Rôles",                 "action": "Écriture"},
     "proxy.restart":         {"section": "Administration",  "feature": "Contrôle proxy",        "action": "Redémarrer"},
+    "updates.read":          {"section": "Administration",  "feature": "Mises à jour",          "action": "Lecture"},
+    "updates.apply":         {"section": "Administration",  "feature": "Mises à jour",          "action": "Appliquer"},
     "settings.smtp.read":       {"section": "Paramètres",      "feature": "Configuration SMTP",    "action": "Lecture"},
     "settings.smtp.write":      {"section": "Paramètres",      "feature": "Configuration SMTP",    "action": "Écriture"},
     "settings.templates.read":  {"section": "Paramètres",      "feature": "Templates (e-mail & page de blocage)", "action": "Lecture"},

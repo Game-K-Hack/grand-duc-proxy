@@ -497,6 +497,40 @@ impl AppState {
             }
         });
     }
+
+    // ── Publication de l'identité du proxy ───────────────────────────────────
+
+    /// Publie version et mode d'exécution dans `app_settings`.
+    ///
+    /// Le backend ne peut pas interroger le proxy : en natif c'est un processus
+    /// séparé sans API d'administration, et en Docker il vit dans
+    /// `network_mode: host`. Cette ligne en base est le seul canal par lequel la
+    /// page « Mises à jour » connaît la version réellement en service, dans les
+    /// deux modes. Elle fait aussi office de heartbeat au démarrage.
+    ///
+    /// Le JSON est assemblé par PostgreSQL : cela évite d'ajouter serde_json et
+    /// chrono pour trois champs.
+    pub async fn publish_runtime_info(&self, listen_addr: &str) -> Result<()> {
+        let mode = if std::path::Path::new("/.dockerenv").exists() { "docker" } else { "native" };
+        sqlx::query(
+            r#"
+            INSERT INTO app_settings (key, value)
+            VALUES ('proxy_runtime', json_build_object(
+                'version',    $1::text,
+                'mode',       $2::text,
+                'addr',       $3::text,
+                'started_at', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+            )::text)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+            "#,
+        )
+        .bind(env!("CARGO_PKG_VERSION"))
+        .bind(mode)
+        .bind(listen_addr)
+        .execute(&self.db_pool)
+        .await?;
+        Ok(())
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -997,6 +1031,7 @@ async fn main() -> Result<()> {
     }
 
     // ── Construction de la CA ─────────────────────────────────────────────
+    let state_pub = state.clone();
     let ca = build_ca()?;
     info!("CA prête (rustls)");
 
@@ -1010,7 +1045,15 @@ async fn main() -> Result<()> {
     });
 
     // ── Démarrage du proxy ────────────────────────────────────────────────
-    info!("Grand-Duc en écoute sur {}  (admin → http://{}/ )", listen_addr, ADMIN_HOST);
+    // Échec non bloquant : le proxy doit filtrer même si la publication rate.
+    if let Err(e) = state_pub.publish_runtime_info(&listen_addr.to_string()).await {
+        warn!("Publication de la version du proxy échouée: {}", e);
+    }
+
+    info!(
+        "Grand-Duc v{} en écoute sur {}  (admin → http://{}/ )",
+        env!("CARGO_PKG_VERSION"), listen_addr, ADMIN_HOST
+    );
 
     ProxyBuilder::new()
         .with_addr(listen_addr)

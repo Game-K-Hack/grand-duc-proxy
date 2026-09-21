@@ -10,14 +10,23 @@ import logging
 
 from database import engine, Base
 from config   import settings
+from version  import VERSION
 
 logger = logging.getLogger(__name__)
-from routers  import auth, rules, logs, stats, users, client_groups, client_users, tls_bypass, killswitch, certificates, proxy_control, integrations, roles
+from routers  import auth, rules, logs, stats, users, client_groups, client_users, tls_bypass, killswitch, certificates, proxy_control, integrations, roles, updates
 from routers  import settings as settings_router
 
 
 async def _ensure_builtin_roles():
-    """Crée les rôles built-in s'ils n'existent pas encore."""
+    """Crée les rôles built-in, et réconcilie leurs permissions.
+
+    La réconciliation est ADDITIVE : on ajoute les clés absentes, on ne retire
+    ni ne modifie jamais une clé déjà présente. Sans elle, une permission
+    introduite par une nouvelle version resterait inaccessible sur toute
+    installation existante — les rôles n'étaient créés qu'une fois, et les
+    migrations SQL ne sont jouées qu'à la création du volume PostgreSQL.
+    C'est ce qui a imposé le rattrapage manuel de SQL/migration_v13.sql:28-33.
+    """
     import json
     from sqlalchemy import select
     from database import AsyncSessionLocal
@@ -35,6 +44,22 @@ async def _ensure_builtin_roles():
         if "Lecteur" not in existing:
             db.add(Role(name="Lecteur", description="Consultation en lecture seule",
                         permissions=json.dumps(VIEWER_PERMISSIONS), is_builtin=True))
+
+        for name, reference in (("Administrateur", ADMIN_PERMISSIONS), ("Lecteur", VIEWER_PERMISSIONS)):
+            role = existing.get(name)
+            if role is None:
+                continue
+            try:
+                current = json.loads(role.permissions) or {}
+            except (ValueError, TypeError):
+                logger.warning("Permissions illisibles pour le rôle %s — réinitialisation", name)
+                current = {}
+            added = [k for k in reference if k not in current]
+            if added:
+                current.update({k: reference[k] for k in added})
+                role.permissions = json.dumps(current)
+                logger.info("Rôle %s : %d permission(s) ajoutée(s) — %s", name, len(added), ", ".join(added))
+
         await db.commit()
 
         # Assigner un rôle aux utilisateurs orphelins
@@ -51,6 +76,52 @@ async def _ensure_builtin_roles():
             await db.commit()
 
 
+async def _notify_if_updated():
+    """Signale une mise à jour appliquée, au démarrage qui suit.
+
+    Le backend qui reçoit POST /api/updates/apply est détruit quelques secondes
+    plus tard par l'updater : il ne peut pas émettre la notification lui-même.
+    On compare donc la version courante à la dernière version enregistrée.
+    """
+    import json
+    from database import AsyncSessionLocal
+    from models import AppSetting
+
+    async with AsyncSessionLocal() as db:
+        row = await db.get(AppSetting, "installed_version")
+        previous = row.value if row else None
+
+        if previous == VERSION:
+            return
+
+        if row:
+            row.value = VERSION
+        else:
+            db.add(AppSetting(key="installed_version", value=VERSION))
+        await db.commit()
+
+        # Premier démarrage : on initialise sans prétendre qu'il y a eu une
+        # mise à jour.
+        if previous is None:
+            return
+
+        req = await db.get(AppSetting, "update_request")
+        who = "—"
+        if req:
+            try:
+                who = (json.loads(req.value) or {}).get("requested_by") or "—"
+            except ValueError:
+                pass
+
+    from services.email import notify
+    asyncio.create_task(notify(
+        "update_applied",
+        f"Grand-Duc mis à jour en {VERSION}",
+        [f"Version précédente : <strong>{previous}</strong>",
+         f"Nouvelle version : <strong>{VERSION}</strong>",
+         f"Demandée par : {who}"],
+    ))
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Crée les tables si absentes (utile en dev)
@@ -59,7 +130,11 @@ async def lifespan(app: FastAPI):
             await conn.run_sync(Base.metadata.create_all)
     except Exception as exc:
         logger.warning("create_all échoué (droits insuffisants ?). Erreur : %s", exc)
+    # Avant tout le reste : le schéma doit correspondre au code qui va tourner.
+    from services.migrations import run_migrations
+    await run_migrations()
     await _ensure_builtin_roles()
+    await _notify_if_updated()
     integrations.start_sync_loop()
     _rule_task = asyncio.create_task(_rule_check_loop())
     yield
@@ -83,9 +158,19 @@ async def _rule_check_loop():
 
 app = FastAPI(
     title="Grand-Duc Admin API",
-    version="1.0.0",
+    version=VERSION,
     lifespan=lifespan,
 )
+
+
+@app.get("/api/health", tags=["Système"])
+async def health():
+    """Sonde de santé NON authentifiée.
+
+    Sert au frontend pour détecter le retour du backend pendant une mise à jour,
+    moment où il n'y a ni jeton exploitable ni garantie que l'API réponde.
+    """
+    return {"status": "ok", "version": VERSION}
 
 app.add_middleware(
     CORSMiddleware,
@@ -138,5 +223,6 @@ app.include_router(proxy_control.router,  prefix="/api/proxy",         tags=["Pr
 app.include_router(integrations.router,  prefix="/api/integrations",  tags=["Intégrations RMM"])
 app.include_router(settings_router.router, prefix="/api/settings",     tags=["Paramètres"])
 app.include_router(roles.router,           prefix="/api/roles",        tags=["Rôles"])
+app.include_router(updates.router,         prefix="/api/updates",      tags=["Mises à jour"])
 
 # uvicorn main:app --reload --port 8000

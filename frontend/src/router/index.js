@@ -14,6 +14,7 @@ import TlsBypass     from '@/views/TlsBypass.vue'
 import Killswitch    from '@/views/Killswitch.vue'
 import Certificates  from '@/views/Certificates.vue'
 import ProxyLogs     from '@/views/ProxyLogs.vue'
+import Updates       from '@/views/Updates.vue'
 import Roles         from '@/views/Roles.vue'
 import Settings      from '@/views/Settings.vue'
 import Documentation from '@/views/Documentation.vue'
@@ -31,6 +32,7 @@ const routes = [
   { path: '/tls-bypass',    name: 'TlsBypass',    component: TlsBypass,     meta: { permissions: ['tls_bypass.read'] } },
   { path: '/killswitch',    name: 'Killswitch',   component: Killswitch,    meta: { permissions: ['killswitch.read'] } },
   { path: '/certificates',  name: 'Certificates', component: Certificates,  meta: { permissions: ['certificates.read'] } },
+  { path: '/updates',       name: 'Updates',      component: Updates,      meta: { permissions: ['updates.read'] } },
   { path: '/proxy-logs',    name: 'ProxyLogs',    component: ProxyLogs,     meta: { permissions: ['proxy_logs.read'] } },
   { path: '/roles',         name: 'Roles',        component: Roles,         meta: { permissions: ['roles.read'] } },
   { path: '/settings',      name: 'Settings',     component: Settings },

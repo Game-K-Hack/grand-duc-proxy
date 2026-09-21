@@ -183,6 +183,22 @@ export const rolesApi = {
   delete:      (id)        => { invalidateCache('/roles'); return api.delete(`/roles/${id}`) },
 }
 
+// ── Mises à jour ──────────────────────────────────────────────────────────────
+export const updatesApi = {
+  status:   ()   => api.get('/updates/status'),
+  check:    ()   => api.post('/updates/check'),
+  progress: ()   => api.get('/updates/progress'),
+  apply:    (refresh_compose = true) => api.post('/updates/apply', { refresh_compose }),
+}
+
+// Instance NUE, volontairement séparée : pendant une mise à jour le backend
+// disparaît, et l'intercepteur 401 de `api` purgerait le jeton en redirigeant
+// vers /login. Ici on veut juste savoir si le service répond.
+const bare = axios.create({ timeout: 4000 })
+export const healthApi = {
+  ping: () => bare.get('/api/health'),
+}
+
 // ── Utilisateurs clients (IP) ─────────────────────────────────────────────────
 export const clientUsersApi = {
   list:       ()             => dedup('client-users', () => api.get('/client-users')),

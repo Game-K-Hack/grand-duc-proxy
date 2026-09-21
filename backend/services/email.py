@@ -28,6 +28,7 @@ EVENT_LABELS = {
     "new_account":    "Nouveau compte administrateur",
     "rule_triggered": "Règle de filtrage déclenchée",
     "rmm_sync_error": "Erreur de synchronisation RMM",
+    "update_applied": "Mise à jour appliquée",
 }
 
 

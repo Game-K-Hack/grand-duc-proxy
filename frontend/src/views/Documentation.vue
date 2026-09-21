@@ -345,6 +345,46 @@
           </div>
         </section>
 
+        <!-- ── Mises à jour ────────────────────────────────────── -->
+        <section class="card" id="updates">
+          <h2 class="doc-title">Mises à jour</h2>
+          <p class="doc-p">La page <strong>Mises à jour</strong> affiche la version installée de chaque module (base de données, backend, interface, proxy) et la dernière version publiée. Quand une nouvelle version existe, un bouton télécharge les images et recrée les services.</p>
+
+          <div class="doc-info">
+            <strong>Pendant l'opération</strong> — l'interface et le proxy sont indisponibles 30 secondes à 2 minutes ; les postes clients perdent temporairement leur accès. La page se reconnecte d'elle-même et affiche le résultat. Vous pouvez fermer l'onglet : la mise à jour se poursuit.
+          </div>
+
+          <p class="doc-p">Les migrations de base de données sont appliquées automatiquement au démarrage du backend. Aucune intervention manuelle n'est nécessaire, et les données sont conservées.</p>
+
+          <h3 class="doc-subtitle">Quand le bouton est indisponible</h3>
+          <ul class="doc-list">
+            <li><strong>Installation native</strong> (sans Docker) — la page affiche les versions et un lien vers le bundle à télécharger, mais ne peut rien installer</li>
+            <li><strong>Stack de développement</strong> — les images sont construites localement, pas téléchargées depuis le registre</li>
+            <li><strong>GitHub injoignable</strong> ou quota d'API atteint — les versions installées restent affichées</li>
+          </ul>
+
+          <h3 class="doc-subtitle">Mise à jour manuelle</h3>
+          <p class="doc-p">Depuis le répertoire du projet sur le serveur, en <strong>conservant toutes les données</strong> :</p>
+          <ul class="doc-list">
+            <li><code>docker compose --profile linux pull</code></li>
+            <li><code>docker compose --profile linux up -d</code></li>
+          </ul>
+          <p class="doc-p">Pour viser une version précise, modifiez <code>GRAND_DUC_VERSION</code> dans le fichier <code>.env</code> avant ces deux commandes. C'est aussi ainsi que l'on revient à une version antérieure.</p>
+
+          <div class="doc-warning">
+            <strong>N'utilisez jamais <code>--remove-orphans</code></strong> — le service <code>proxy</code> vit sous le profil <code>linux</code> : sans <code>--profile linux</code>, cette option le supprimerait.
+          </div>
+
+          <h3 class="doc-subtitle">Repartir d'une base vierge</h3>
+          <p class="doc-p"><code>docker compose --profile linux down -v</code> suivi de <code>up -d</code> réinitialise l'installation. Cette commande supprime <strong>tous</strong> les volumes : la base (règles, groupes, postes, journaux, comptes), les journaux du proxy, <strong>et le certificat CA</strong>.</p>
+
+          <div class="doc-warning">
+            <strong>La perte du CA est la conséquence la plus lourde.</strong> Un nouveau certificat est généré au redémarrage et devra être redéployé sur <strong>tous les postes clients</strong>, faute de quoi le filtrage HTTPS cessera de fonctionner pour eux. Sauvegardez-le avant, ou supprimez uniquement le volume de la base pour le conserver. Le README détaille les commandes de sauvegarde et de restauration.
+          </div>
+
+          <p class="doc-p">Un retour à une version antérieure ne défait pas les migrations déjà appliquées : une version ancienne peut refuser de démarrer sur un schéma plus récent. Sauvegardez la base avant toute mise à jour importante.</p>
+        </section>
+
         <!-- ── Comptes et rôles ────────────────────────────────── -->
         <section class="card" id="accounts">
           <h2 class="doc-title">Comptes et rôles</h2>
@@ -606,6 +646,10 @@ const sections = [
   {
     id: 'proxy-control', label: 'Contrôle proxy',
     icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
+  },
+  {
+    id: 'updates', label: 'Mises à jour',
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>`,
   },
   {
     id: 'accounts', label: 'Comptes et rôles',

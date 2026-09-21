@@ -26,6 +26,10 @@ RUN sed 's/^psycopg2\r\?$/psycopg2-binary/' requirements.txt > requirements-dock
 # Copier le code source
 COPY backend/ .
 
+# Migrations SQL : le backend les applique lui-même au démarrage, car
+# docker-init-db.sh ne s'exécute qu'à la création du volume PostgreSQL.
+COPY SQL/ /app/SQL/
+
 # Supprimer le .env local s'il a été copié par erreur
 RUN rm -f .env
 
@@ -33,6 +37,11 @@ RUN rm -f .env
 # Le backend n'a pas besoin de gérer le processus proxy directement
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+
+# Version gravée au build ; sert de repli quand le label OCI de l'image
+# n'est pas lisible (build local, exécution hors conteneur).
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
 
 EXPOSE 8000
 

@@ -76,7 +76,7 @@
           Test d'accès
         </router-link>
 
-        <template v-if="auth.hasAnyPermission('tls_bypass.read', 'certificates.read', 'killswitch.read', 'users.read', 'roles.read')">
+        <template v-if="auth.hasAnyPermission('tls_bypass.read', 'certificates.read', 'killswitch.read', 'users.read', 'roles.read', 'updates.read')">
           <div class="nav-section" style="margin-top:8px">Administration</div>
 
           <router-link v-if="auth.hasPermission('tls_bypass.read')" class="nav-item" :class="{ active: $route.name === 'TlsBypass' }" to="/tls-bypass">
@@ -101,6 +101,16 @@
               <line x1="12" y1="2" x2="12" y2="12"/>
             </svg>
             Killswitch
+          </router-link>
+
+          <router-link v-if="auth.hasPermission('updates.read')" class="nav-item" :class="{ active: $route.name === 'Updates' }" to="/updates">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 1 1-3-6.7"/>
+              <polyline points="21 3 21 9 15 9"/>
+            </svg>
+            Mises à jour
+            <span v-if="updateAvailable" :title="`Version ${updateAvailable} disponible`"
+              style="width:6px;height:6px;border-radius:50%;background:var(--accent);margin-left:auto;flex-shrink:0"></span>
           </router-link>
 
         </template>
@@ -146,17 +156,27 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTheme } from '@/composables/useTheme'
+import { updatesApi } from '@/api'
 const auth   = useAuthStore()
 const router = useRouter()
 const theme  = useTheme()
 
-onMounted(() => {
+// Pastille du menu : tag de la version disponible, ou null. Silencieux en cas
+// d'échec — une vérification de mise à jour ne doit jamais gêner la navigation.
+const updateAvailable = ref(null)
+
+onMounted(async () => {
   theme.init()
-  auth.fetchMe()
+  await auth.fetchMe()
+  if (!auth.hasPermission('updates.read')) return
+  try {
+    const { data } = await updatesApi.status()
+    if (data.update_available) updateAvailable.value = data.latest?.tag || true
+  } catch { /* sans conséquence */ }
 })
 
 async function logout() {

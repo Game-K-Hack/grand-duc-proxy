@@ -137,7 +137,7 @@ docker compose --profile linux logs -f
 docker compose --profile linux down
 docker compose --profile linux up --build
 
-# Reset complet (supprime la DB)
+# Reset complet (supprime la DB ET le certificat CA — voir « Mise à jour »)
 docker compose --profile linux down -v
 docker compose --profile linux up --build
 
@@ -169,6 +169,113 @@ docker compose --profile linux up --build
 │                    └──────────┘                 │
 └─────────────────────────────────────────────────┘
 ```
+
+---
+
+## Mise à jour
+
+Le plus simple est le bouton **Administration → Mises à jour** dans l'interface :
+il télécharge les nouvelles images et recrée les services. Les instructions qui
+suivent couvrent la mise à jour manuelle, depuis le serveur.
+
+Toutes les commandes sont à lancer **depuis le répertoire du projet** (celui qui
+contient `docker-compose.yml` et `.env`, créé par `install.sh` sous le nom
+`grand-duc`).
+
+### Mettre à jour en conservant les données
+
+C'est le cas normal : règles, groupes, postes clients, journaux, comptes et
+certificat CA sont préservés.
+
+```bash
+# Optionnel : viser une version précise plutôt que la dernière
+# (sans cette ligne, la version déjà inscrite dans .env est conservée)
+sed -i 's|^GRAND_DUC_VERSION=.*|GRAND_DUC_VERSION=0.1.6|' .env
+
+docker compose --profile linux pull
+docker compose --profile linux up -d
+```
+
+Les migrations de base de données sont appliquées **automatiquement** par le
+backend à son démarrage : il tient un registre `schema_migrations` et ne rejoue
+que ce qui manque. Pour le vérifier :
+
+```bash
+docker compose logs backend | grep -i migration
+docker compose exec -T db psql -U hibou -d grand_duc   -c "SELECT version, applied_at FROM schema_migrations ORDER BY version;"
+```
+
+> ⚠️ N'utilisez **pas** `--remove-orphans`. Le service `proxy` vit sous le profil
+> `linux` : sans `--profile linux`, cette option le supprimerait purement et
+> simplement.
+
+### Mettre à jour en repartant d'une base vierge
+
+`down -v` supprime **tous** les volumes du projet, pas seulement la base :
+
+| Volume | Contenu perdu |
+|---|---|
+| `pgdata` | Règles, groupes, postes clients, journaux d'accès, comptes et rôles |
+| `certs` | **Le certificat CA** — un nouveau sera généré au redémarrage |
+| `proxy-data` | Journaux du proxy |
+
+> ⚠️ La perte du CA est la conséquence la plus lourde : le nouveau certificat
+> devra être redéployé sur **tous les postes clients**, sinon le filtrage HTTPS
+> cessera de fonctionner pour eux. Sauvegardez-le avant (voir plus bas).
+
+```bash
+docker compose --profile linux down -v
+docker compose --profile linux pull
+docker compose --profile linux up -d
+```
+
+L'installation repart de zéro : le compte `admin` est recréé avec son mot de
+passe initial, qu'il faut changer à la première connexion.
+
+### Remettre la base à zéro en gardant le certificat CA
+
+Souvent préférable au `down -v` : on ne détruit que la base, le CA déployé sur
+les postes reste valable.
+
+```bash
+docker compose --profile linux down
+docker volume rm grand-duc_pgdata      # adapter le préfixe au nom du projet
+docker compose --profile linux up -d
+```
+
+Le préfixe du volume est le nom du projet Compose, c'est-à-dire celui du
+répertoire. `docker volume ls | grep pgdata` donne le nom exact.
+
+### Sauvegardes
+
+À faire avant toute opération destructive :
+
+```bash
+# Base de données
+docker compose exec -T db pg_dump -U hibou grand_duc > grand-duc-$(date +%F).sql
+
+# Certificat CA (clé privée incluse — à stocker en lieu sûr)
+docker run --rm -v grand-duc_certs:/c -v "$PWD":/out alpine   tar czf /out/grand-duc-ca-$(date +%F).tar.gz -C /c .
+```
+
+Restauration de la base après un `down -v` :
+
+```bash
+cat grand-duc-2026-01-31.sql | docker compose exec -T db psql -U hibou -d grand_duc
+```
+
+### Revenir à une version antérieure
+
+```bash
+sed -i 's|^GRAND_DUC_VERSION=.*|GRAND_DUC_VERSION=0.1.5|' .env
+docker compose --profile linux pull
+docker compose --profile linux up -d
+```
+
+> ⚠️ Le retour arrière ne **défait pas** les migrations de base déjà appliquées.
+> Une version antérieure peut refuser de démarrer sur un schéma plus récent.
+> Restaurez une sauvegarde de la base prise avant la mise à jour si le backend
+> ne démarre plus.
 
 ---
 

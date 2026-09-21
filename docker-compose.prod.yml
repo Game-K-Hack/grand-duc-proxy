@@ -11,7 +11,7 @@ services:
 
   # ── Base de données ─────────────────────────────────────────────────────
   db:
-    image: ghcr.io/game-k-hack/grand-duc-proxy-db:latest
+    image: ghcr.io/game-k-hack/grand-duc-proxy-db:${GRAND_DUC_VERSION:-latest}
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-hibou}
@@ -31,7 +31,7 @@ services:
 
   # ── Backend Python (API) ───────────────────────────────────────────────
   backend:
-    image: ghcr.io/game-k-hack/grand-duc-proxy-backend:latest
+    image: ghcr.io/game-k-hack/grand-duc-proxy-backend:${GRAND_DUC_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       db:
@@ -55,7 +55,7 @@ services:
 
   # ── Frontend Vue.js (Nginx) ────────────────────────────────────────────
   frontend:
-    image: ghcr.io/game-k-hack/grand-duc-proxy-frontend:latest
+    image: ghcr.io/game-k-hack/grand-duc-proxy-frontend:${GRAND_DUC_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       - backend
@@ -68,7 +68,7 @@ services:
   proxy:
     container_name: grand-duc-proxy
     profiles: ["linux"]
-    image: ghcr.io/game-k-hack/grand-duc-proxy-proxy:latest
+    image: ghcr.io/game-k-hack/grand-duc-proxy-proxy:${GRAND_DUC_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       db:
