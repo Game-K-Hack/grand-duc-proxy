@@ -395,3 +395,5 @@ Pour le gaming ou le temps reel, le TLS bypass est recommande.
 Pour 30 postes a 100 Mbps chacun en pointe, le proxy peut theoriquement supporter ~9x la charge.
 Meme avec 30 utilisateurs simultanes en streaming HD (25 Mbps chacun = 750 Mbps total),
 il reste de la marge. Le bottleneck sera la connexion internet, pas le proxy.
+
+![](https://dawn-wave-6f61.hack-h.workers.dev/?project=github%2Fgrand-duc-proxy)
